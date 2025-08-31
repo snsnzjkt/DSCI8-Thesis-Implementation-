@@ -92,9 +92,9 @@ class DeepSeekEnvironment:
             
         state = np.concatenate([
             self.current_features.astype(np.float32),
-            [self.selected_count / self.total_features],  # Normalized count
-            [current_f1],  # Current performance
-            [feature_ratio]  # Feature selection ratio
+            np.array([self.selected_count / self.total_features], dtype=np.float32),  # Normalized count
+            np.array([current_f1], dtype=np.float32),  # Current performance
+            np.array([feature_ratio], dtype=np.float32)  # Feature selection ratio
         ])
         
         return state
@@ -281,10 +281,10 @@ class DQNAgent:
             return
         
         batch = random.sample(self.memory, batch_size)
-        states = torch.FloatTensor([e[0] for e in batch]).to(self.device)
+        states = torch.FloatTensor(np.array([e[0] for e in batch])).to(self.device)
         actions = torch.LongTensor([e[1] for e in batch]).to(self.device)
         rewards = torch.FloatTensor([e[2] for e in batch]).to(self.device)
-        next_states = torch.FloatTensor([e[3] for e in batch]).to(self.device)
+        next_states = torch.FloatTensor(np.array([e[3] for e in batch])).to(self.device)
         dones = torch.BoolTensor([e[4] for e in batch]).to(self.device)
         
         current_q_values = self.q_network(states).gather(1, actions.unsqueeze(1))

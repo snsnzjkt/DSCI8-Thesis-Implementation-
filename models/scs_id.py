@@ -327,10 +327,49 @@ def create_scs_id_model(input_features: int = 42, num_classes: int = 15,
     
     return model
 
+def fix_batchnorm_after_pruning(model):
+    """Fix BatchNorm layers after structured pruning"""
+    print("🔧 Fixing BatchNorm layers after pruning...")
+    
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.BatchNorm1d):
+            if module.weight is not None:
+                current_features = module.weight.size(0)
+                
+                if module.num_features != current_features:
+                    print(f"   Fixing {name}: {module.num_features} -> {current_features} features")
+                    module.num_features = current_features
+                
+                if module.running_mean is not None and module.running_mean.size(0) != current_features:
+                    module.running_mean = module.running_mean[:current_features].clone()
+                
+                if module.running_var is not None and module.running_var.size(0) != current_features:
+                    module.running_var = module.running_var[:current_features].clone()
+    
+    print("   ✅ BatchNorm layers fixed!")
+
 # Example usage and testing
 if __name__ == "__main__":
     # Test model creation
-    model = create_scs_id_model()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # Create model without pruning first
+    model = create_scs_id_model(
+        input_features=42, 
+        num_classes=15,
+        apply_pruning=False,  # Don't apply pruning during creation
+        pruning_ratio=0.3
+    )
+
+    # Move to device first
+    model = model.to(device)
+
+    # Apply structured pruning manually
+    print("Applying structured pruning with ratio: 0.3")
+    model.apply_structured_pruning(0.3)
+
+    # Fix BatchNorm layers after pruning
+    fix_batchnorm_after_pruning(model)
     
     # Test forward pass
     batch_size = 32
