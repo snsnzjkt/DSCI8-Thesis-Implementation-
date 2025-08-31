@@ -119,4 +119,8 @@ def main():
         print("\n🔧 Please fix GPU setup issues before training.")
         
 if __name__ == "__main__":
+<<<<<<< HEAD
     main()
+=======
+    main()
+>>>>>>> 863a7fffe5e3487c38210d00ab6dade768918527
