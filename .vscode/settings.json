@@ -1,0 +1,42 @@
+{
+    "python.defaultInterpreterPath": "./.venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.extraPaths": [
+        "./",
+        "./models",
+        "./data",
+        "./experiments",
+        "./optimization"
+    ],
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.stubPath": "./.vscode/stubs",
+    "python.analysis.include": [
+        "./**/*.py"
+    ],
+    "python.analysis.exclude": [
+        "**/__pycache__",
+        "**/.git",
+        "**/node_modules",
+        ".venv",
+        "venv"
+    ],
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": true,
+    "python.linting.mypyEnabled": false,
+    "python.formatting.provider": "black",
+    "python.sortImports.args": [
+        "--profile",
+        "black"
+    ],
+    "files.associations": {
+        "*.py": "python"
+    },
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    }
+}
