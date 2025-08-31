@@ -11,17 +11,32 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Import explainability libraries
+LIME_AVAILABLE = False
+SHAP_AVAILABLE = False
+
 try:
     import lime
     import lime.tabular
-    import shap
     LIME_AVAILABLE = True
+except ImportError:
+    lime = None
+    
+try:
+    import shap
     SHAP_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ Explainability libraries not available: {e}")
-    print("📦 Install with: pip install lime shap")
-    LIME_AVAILABLE = False
-    SHAP_AVAILABLE = False
+except ImportError:
+    shap = None
+
+if not LIME_AVAILABLE or not SHAP_AVAILABLE:
+    missing_libs = []
+    if not LIME_AVAILABLE:
+        missing_libs.append("lime")
+    if not SHAP_AVAILABLE:
+        missing_libs.append("shap")
+    
+    print(f"Warning: Missing explainability libraries: {', '.join(missing_libs)}")
+    print(f"Install with: pip install {' '.join(missing_libs)}")
+    print("The explainer will work with limited functionality.")
 
 try:
     from config import config
@@ -60,63 +75,80 @@ class HybridLIMESHAPExplainer:
         self.shap_background_samples = 1000  # As specified
         self.alpha = 0.7  # Weighting factor for hybrid approach (Equation II1)
         
-        print(f"🧠 Hybrid LIME-SHAP Explainer initialized")
+        print(f"Hybrid LIME-SHAP Explainer initialized")
         print(f"   Features: {len(feature_names)}")
         print(f"   Classes: {len(class_names)}")
         print(f"   Device: {self.device}")
     
     def setup_explainers(self, X_train: np.ndarray):
         """Initialize LIME and SHAP explainers with training data"""
-        print("🔧 Setting up LIME and SHAP explainers...")
+        print("Setting up LIME and SHAP explainers...")
         
-        if not LIME_AVAILABLE or not SHAP_AVAILABLE:
-            raise ImportError("LIME and SHAP libraries are required for explainability")
+        if not LIME_AVAILABLE and not SHAP_AVAILABLE:
+            raise ImportError("Both LIME and SHAP libraries are required for explainability. Install with: pip install lime shap")
         
-        # Setup LIME explainer
-        print("   📊 Initializing LIME explainer...")
-        self.lime_explainer = lime.tabular.LimeTabularExplainer(
-            X_train,
-            feature_names=self.feature_names,
-            class_names=self.class_names,
-            mode='classification',
-            discretize_continuous=True,
-            random_state=42
-        )
+        if not LIME_AVAILABLE:
+            print("   Warning: LIME not available, using SHAP only")
+            self.lime_explainer = None
+        else:
+            # Setup LIME explainer
+            print("   Initializing LIME explainer...")
+            self.lime_explainer = lime.tabular.LimeTabularExplainer(
+                X_train,
+                feature_names=self.feature_names,
+                class_names=self.class_names,
+                mode='classification',
+                discretize_continuous=True,
+                random_state=42
+            )
         
-        # Setup SHAP explainer
-        print("   📊 Initializing SHAP explainer...")
+        if not SHAP_AVAILABLE:
+            print("   Warning: SHAP not available, using LIME only")
+            self.shap_explainer = None
+        else:
+            # Setup SHAP explainer
+            print("   Initializing SHAP explainer...")
         
-        # Create a wrapper for the model to work with SHAP
-        def model_predict_wrapper(X):
-            """Wrapper function for model predictions"""
-            X_tensor = torch.FloatTensor(X).to(self.device)
-            self.model.eval()
-            with torch.no_grad():
-                outputs = self.model(X_tensor)
-                if len(outputs.shape) > 1:
-                    # Multi-class classification - return probabilities
-                    probabilities = torch.softmax(outputs, dim=1).cpu().numpy()
-                    return probabilities
-                else:
-                    # Binary classification
-                    probabilities = torch.sigmoid(outputs).cpu().numpy()
-                    return np.column_stack([1-probabilities, probabilities])
+            # Create a wrapper for the model to work with SHAP
+            def model_predict_wrapper(X):
+                """Wrapper function for model predictions"""
+                X_tensor = torch.FloatTensor(X).to(self.device)
+                self.model.eval()
+                with torch.no_grad():
+                    outputs = self.model(X_tensor)
+                    if len(outputs.shape) > 1:
+                        # Multi-class classification - return probabilities
+                        probabilities = torch.softmax(outputs, dim=1).cpu().numpy()
+                        return probabilities
+                    else:
+                        # Binary classification
+                        probabilities = torch.sigmoid(outputs).cpu().numpy()
+                        return np.column_stack([1-probabilities, probabilities])
+            
+            # Use a subset of training data as background for SHAP
+            background_size = min(self.shap_background_samples, len(X_train))
+            background_indices = np.random.choice(len(X_train), background_size, replace=False)
+            background_data = X_train[background_indices]
+            
+            # Initialize SHAP explainer
+            self.shap_explainer = shap.KernelExplainer(
+                model_predict_wrapper, 
+                background_data
+            )
         
-        # Use a subset of training data as background for SHAP
-        background_size = min(self.shap_background_samples, len(X_train))
-        background_indices = np.random.choice(len(X_train), background_size, replace=False)
-        background_data = X_train[background_indices]
-        
-        # Initialize SHAP explainer
-        self.shap_explainer = shap.KernelExplainer(
-            model_predict_wrapper, 
-            background_data
-        )
-        
-        print("   ✅ Explainers initialized successfully!")
+        print("   Explainers initialized successfully!")
     
     def explain_instance_lime(self, instance: np.ndarray, num_features: int = 10) -> Dict:
         """Generate LIME explanation for a single instance"""
+        if not LIME_AVAILABLE:
+            return {
+                'feature_importance': {},
+                'confidence': 0.0,
+                'prediction': None,
+                'explanation_time': 0.0,
+                'error': 'LIME library not available'
+            }
+            
         if self.lime_explainer is None:
             raise ValueError("LIME explainer not initialized. Call setup_explainers() first.")
         
@@ -146,6 +178,15 @@ class HybridLIMESHAPExplainer:
     
     def explain_instance_shap(self, instance: np.ndarray, num_features: int = 10) -> Dict:
         """Generate SHAP explanation for a single instance"""
+        if not SHAP_AVAILABLE:
+            return {
+                'feature_importance': {},
+                'confidence': 0.0,
+                'prediction': None,
+                'explanation_time': 0.0,
+                'error': 'SHAP library not available'
+            }
+            
         if self.shap_explainer is None:
             raise ValueError("SHAP explainer not initialized. Call setup_explainers() first.")
         
@@ -186,7 +227,7 @@ class HybridLIMESHAPExplainer:
         Generate hybrid LIME-SHAP explanation using weighted combination
         Implements Equation II1 from the thesis
         """
-        print(f"🔍 Generating hybrid explanation for instance...")
+        print(f"Generating hybrid explanation for instance...")
         
         # Get individual explanations
         lime_result = self.explain_instance_lime(instance, num_features)
@@ -250,7 +291,7 @@ class HybridLIMESHAPExplainer:
         - LIME explanation stability index
         - Time-to-validate
         """
-        print(f"📊 Evaluating explanation quality on {num_samples} samples...")
+        print(f"Evaluating explanation quality on {num_samples} samples...")
         
         # Sample instances for evaluation
         sample_indices = np.random.choice(len(X_test), 
@@ -268,7 +309,7 @@ class HybridLIMESHAPExplainer:
             }
         }
         
-        print("   🔍 Processing explanations...")
+        print("   Processing explanations...")
         for i, idx in enumerate(sample_indices):
             if i % 50 == 0:
                 print(f"      Progress: {i}/{len(sample_indices)}")
@@ -299,7 +340,7 @@ class HybridLIMESHAPExplainer:
                 evaluation_results['explanation_times']['hybrid'].append(hybrid_exp['explanation_time'])
                 
             except Exception as e:
-                print(f"⚠️ Error processing instance {idx}: {e}")
+                print(f"Warning: Error processing instance {idx}: {e}")
                 continue
         
         # Calculate summary statistics
@@ -315,10 +356,10 @@ class HybridLIMESHAPExplainer:
             'samples_evaluated': len(evaluation_results['lime_stability'])
         }
         
-        print(f"   ✅ Evaluation complete!")
-        print(f"   📊 LIME Stability Index: {summary_metrics['lime_stability_index']:.3f}")
-        print(f"   📊 SHAP Coherence Rate: {summary_metrics['shap_coherence_rate']:.3f}")
-        print(f"   📊 Hybrid Fidelity Score: {summary_metrics['hybrid_fidelity_score']:.3f}")
+        print(f"   Evaluation complete!")
+        print(f"   LIME Stability Index: {summary_metrics['lime_stability_index']:.3f}")
+        print(f"   SHAP Coherence Rate: {summary_metrics['shap_coherence_rate']:.3f}")
+        print(f"   Hybrid Fidelity Score: {summary_metrics['hybrid_fidelity_score']:.3f}")
         
         return summary_metrics
     
@@ -454,7 +495,7 @@ class HybridLIMESHAPExplainer:
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            print(f"   ✅ Visualization saved: {save_path}")
+            print(f"   Visualization saved: {save_path}")
         else:
             plt.show()
         
@@ -463,7 +504,7 @@ class HybridLIMESHAPExplainer:
     def generate_explanation_report(self, X_test: np.ndarray, y_test: np.ndarray,
                                   num_samples: int = 200) -> str:
         """Generate comprehensive explanation quality report"""
-        print("📋 Generating explainability report...")
+        print("Generating explainability report...")
         
         # Evaluate explanations
         metrics = self.evaluate_explanations(X_test, y_test, num_samples)
@@ -498,20 +539,20 @@ class HybridLIMESHAPExplainer:
             
             f.write("THESIS REQUIREMENTS COMPLIANCE\n")
             f.write("-" * 35 + "\n")
-            f.write("✓ LIME local explanations with 500 perturbed samples\n")
-            f.write("✓ SHAP global insights with 1000 background samples\n")
-            f.write("✓ Hybrid weighted approach (Equation II1)\n")
-            f.write("✓ 87% analyst agreement rate target\n")
-            f.write(f"✓ Explanation quality: {metrics['hybrid_fidelity_score']:.1%}\n\n")
+            f.write("LIME local explanations with 500 perturbed samples\n")
+            f.write("SHAP global insights with 1000 background samples\n")
+            f.write("Hybrid weighted approach (Equation II1)\n")
+            f.write("87% analyst agreement rate target\n")
+            f.write(f"Explanation quality: {metrics['hybrid_fidelity_score']:.1%}\n\n")
             
             f.write(f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         
-        print(f"   ✅ Report saved: {report_path}")
+        print(f"   Report saved: {report_path}")
         return report_path
 
 def main():
     """Example usage of the explainer"""
-    print("🧠 Hybrid LIME-SHAP Explainer Test")
+    print("Hybrid LIME-SHAP Explainer Test")
     print("This module requires a trained model and data to function.")
     print("Use it within your training pipeline or model evaluation.")
 
