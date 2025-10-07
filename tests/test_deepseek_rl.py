@@ -279,7 +279,8 @@ class TestDeepSeekRL(unittest.TestCase):
         
         self.assertIsNotNone(self.deepseek.selected_features_idx)
         self.assertGreater(len(history), 0)
-        self.assertLessEqual(len(self.deepseek.selected_features_idx), self.max_features)
+        if self.deepseek.selected_features_idx is not None:
+            self.assertLessEqual(len(self.deepseek.selected_features_idx), self.max_features)
         print("✓ Fit test passed")
     
     def test_transform(self):
@@ -369,10 +370,11 @@ class TestFeatureImportance(unittest.TestCase):
         )
         
         self.assertIsNotNone(results)
-        self.assertIn('combined_scores', results)
-        self.assertIn('rf_importances', results)
-        self.assertIn('perm_importances', results)
-        self.assertEqual(len(results['combined_scores']), len(self.selected_features))
+        if results is not None:
+            self.assertIn('combined_scores', results)
+            self.assertIn('rf_importances', results)
+            self.assertIn('perm_importances', results)
+            self.assertEqual(len(results['combined_scores']), len(self.selected_features))
         print("✓ Feature importance evaluation test passed")
 
 
