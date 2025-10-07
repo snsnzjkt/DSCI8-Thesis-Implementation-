@@ -628,7 +628,11 @@ def evaluate_feature_importance(X, y, selected_features=None, top_k=20, feature_
         
         # Calculate permutation importance
         perm_importance = permutation_importance(rf, X_eval, y, n_repeats=10, random_state=42, n_jobs=-1)
-        perm_importances = perm_importance.importances_mean
+        perm_importances = perm_importance['importances_mean']
+        
+        # Ensure we have numpy arrays for arithmetic operations
+        rf_importances = np.array(rf_importances)
+        perm_importances = np.array(perm_importances)
         
         # Combine scores (weighted average)
         combined_scores = 0.6 * rf_importances + 0.4 * perm_importances
