@@ -217,8 +217,8 @@ def evaluate_selected_features(X_train, y_train, X_test, y_test,
         # Plot feature importance
         plt.figure(figsize=(12, 8))
         top_20 = importance_df.head(20)
-        plt.barh(range(len(top_20)), top_20['importance_score'].values)
-        plt.yticks(range(len(top_20)), top_20['feature_name'].values)
+        plt.barh(range(len(top_20)), top_20['importance_score'].to_numpy())
+        plt.yticks(range(len(top_20)), top_20['feature_name'].tolist())
         plt.xlabel('Importance Score', fontsize=12)
         plt.title('Top 20 Feature Importance (DeepSeek RL)', fontsize=14, fontweight='bold')
         plt.gca().invert_yaxis()
