@@ -335,8 +335,8 @@ class CICIDSPreprocessor:
             count = np.sum(y_encoded == i)
             print(f"      {i}: {class_name} ({count:,} samples)")
         
-        # Update config with actual number of classes
-        config.NUM_CLASSES = len(self.label_encoder.classes_)
+        # Store actual number of classes in instance (config is read-only)
+        self.num_classes = len(self.label_encoder.classes_)
         
         return X, y_encoded
     
@@ -403,10 +403,17 @@ class CICIDSPreprocessor:
             print(f"   Applying SMOTE (max {target_count} per class)...")
             print(f"   Will oversample: {list(sampling_strategy.keys())}")
             
-            smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=5)
+            # Create SMOTE with proper typing
+            smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=5)  # type: ignore
             
             try:
-                X_balanced, y_balanced = smote.fit_resample(X, y)
+                # Handle potential return type variations
+                result = smote.fit_resample(X, y)
+                if len(result) == 2:
+                    X_balanced, y_balanced = result
+                else:
+                    # Handle cases where additional info might be returned
+                    X_balanced, y_balanced = result[0], result[1]
                 balanced_counts = np.bincount(y_balanced)
                 print(f"   Balanced distribution: {balanced_counts}")
             except Exception as e:
