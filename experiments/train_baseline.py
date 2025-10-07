@@ -316,7 +316,11 @@ class BaselineTrainer:
         for class_name in class_names[:10]:  # Show first 10 classes
             if class_name in report:
                 metrics = report[class_name]
-                print(f"   {class_name:20s}: P={metrics['precision']:.3f} R={metrics['recall']:.3f} F1={metrics['f1-score']:.3f}")
+                if isinstance(metrics, dict):
+                    precision = metrics.get('precision', 0.0)
+                    recall = metrics.get('recall', 0.0)
+                    f1_score_val = metrics.get('f1-score', 0.0)
+                    print(f"   {class_name:20s}: P={precision:.3f} R={recall:.3f} F1={f1_score_val:.3f}")
         
         if len(class_names) > 10:
             print(f"   ... and {len(class_names) - 10} more classes")
