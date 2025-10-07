@@ -4,13 +4,32 @@ GPU Setup Verification Script for SCS-ID
 Run this to verify your GPU setup before training
 """
 
-import torch
 import sys
+from typing import Any
+
+# Global variables
+torch: Any = None
+TORCH_AVAILABLE = False
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError as e:
+    print(f"❌ PyTorch not installed: {e}")
+    print("Please install PyTorch: pip install torch torchvision torchaudio")
+    TORCH_AVAILABLE = False
 
 def check_cuda_availability():
     """Check CUDA availability and setup"""
     print("🔍 GPU Setup Verification for SCS-ID")
     print("=" * 50)
+    
+    if not TORCH_AVAILABLE:
+        print("❌ PyTorch not available - cannot check CUDA")
+        return False
+    
+    # Import torch locally to avoid scoping issues
+    import torch  # type: ignore
     
     # Check if CUDA is available
     cuda_available = torch.cuda.is_available()
@@ -27,7 +46,31 @@ def check_cuda_availability():
         print(f"Current GPU: {current_gpu}")
         print(f"GPU Name: {gpu_name}")
         print(f"GPU Memory: {gpu_memory:.1f} GB")
-        print(f"CUDA Version: {torch.version.cuda}")
+        # Get CUDA version safely
+        try:
+            # Try to get CUDA version from PyTorch if available
+            import torch.utils.cpp_extension
+            print(f"CUDA Available in PyTorch: Yes")
+        except:
+            pass
+        
+        # Try alternative method to get CUDA runtime version
+        try:
+            import subprocess
+            result = subprocess.run(['nvcc', '--version'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and 'release' in result.stdout:
+                # Extract version from nvcc output
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    if 'release' in line:
+                        version_part = line.split('release')[1].split(',')[0].strip()
+                        print(f"CUDA Toolkit Version: {version_part}")
+                        break
+            else:
+                print("CUDA Toolkit Version: Not found or nvcc not available")
+        except Exception:
+            print("CUDA Toolkit Version: Unable to determine")
+            
         print(f"PyTorch Version: {torch.__version__}")
         
         # Test GPU functionality
@@ -69,6 +112,13 @@ def check_training_requirements():
     """Check if system meets SCS-ID training requirements"""
     print("\n📋 SCS-ID Training Requirements Check")
     print("=" * 50)
+    
+    if not TORCH_AVAILABLE:
+        print("❌ PyTorch not available - cannot check training requirements")
+        return
+    
+    # Import torch locally to avoid scoping issues
+    import torch  # type: ignore
     
     if torch.cuda.is_available():
         gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -119,8 +169,4 @@ def main():
         print("\n🔧 Please fix GPU setup issues before training.")
         
 if __name__ == "__main__":
-<<<<<<< HEAD
     main()
-=======
-    main()
->>>>>>> 863a7fffe5e3487c38210d00ab6dade768918527
