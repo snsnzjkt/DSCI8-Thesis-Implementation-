@@ -8,7 +8,7 @@ import torch.nn as nn
 import sys
 
 # Import the SCS-ID model
-from models_scs_id_complete import (
+from models.scs_id import (
     SCSIDModel, 
     create_scs_id_model,
     apply_structured_pruning,

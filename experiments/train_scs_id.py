@@ -470,6 +470,10 @@ class SCSIDTrainer:
     
     def save_model_checkpoint(self, epoch, is_best=False):
         """Save model checkpoint"""
+        if self.model is None:
+            print("❌ Cannot save checkpoint: model not initialized")
+            return
+            
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
@@ -486,7 +490,7 @@ class SCSIDTrainer:
         torch.save(checkpoint, checkpoint_path)
         
         # Save best model
-        if is_best:
+        if is_best and self.model is not None:
             best_path = f"{config.RESULTS_DIR}/scs_id_best_model.pth"
             torch.save(self.model.state_dict(), best_path)
             print(f"   💾 Best model saved: {best_path}")
@@ -572,8 +576,7 @@ class SCSIDTrainer:
             optimizer, 
             mode='max',  # Maximize validation accuracy
             factor=0.5, 
-            patience=5,
-            verbose=True
+            patience=5
         )
         
         print(f"✅ Training configuration:")
@@ -680,7 +683,7 @@ class SCSIDTrainer:
             'num_classes': num_classes,
             'epochs_trained': len(self.train_losses),
             'feature_selection_history': fs_history,
-            'selected_features': self.selected_features.tolist(),
+            'selected_features': self.selected_features.tolist() if self.selected_features is not None else None,
             'train_history': {
                 'train_losses': self.train_losses,
                 'train_accuracies': self.train_accuracies,
