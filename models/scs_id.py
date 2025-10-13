@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import numpy as np
 import os
 import pickle
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Optional, Dict, Any
 from pathlib import Path
 
 
@@ -394,7 +394,7 @@ class SCSIDModel(nn.Module):
         
         return breakdown
     
-    def get_convseek_parameter_reduction(self) -> Dict[str, any]:
+    def get_convseek_parameter_reduction(self) -> Dict[str, Any]:
         """
         Calculate parameter reduction achieved by ConvSeek blocks
         
@@ -587,7 +587,7 @@ def save_model_to_file(model: nn.Module, filepath: str) -> int:
 def validate_compression_ratio(original_model: SCSIDModel, 
                               compressed_model: nn.Module,
                               target_ratio: float = 0.75,
-                              save_dir: str = '/tmp') -> Dict[str, any]:
+                              save_dir: str = '/tmp') -> Dict[str, Any]:
     """
     Validate that compression achieves target ratio (thesis requirement: 75%)
     
@@ -678,7 +678,7 @@ def validate_accuracy_degradation(original_model: SCSIDModel,
                                  compressed_model: nn.Module,
                                  test_loader,
                                  max_degradation: float = 0.02,
-                                 device: str = 'cpu') -> Dict[str, any]:
+                                 device: str = 'cpu') -> Dict[str, Any]:
     """
     Validate that accuracy degradation is within acceptable limits (thesis requirement: <2%)
     

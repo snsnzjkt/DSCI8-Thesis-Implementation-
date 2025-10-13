@@ -68,10 +68,11 @@ def run_baseline_training():
         from experiments.train_baseline import BaselineTrainer
         
         trainer = BaselineTrainer()
-        model, accuracy = trainer.train_model()
+        model, accuracy, f1 = trainer.train_model()
         
         print("✅ Baseline CNN training completed successfully!")
         print(f"🏆 Baseline Accuracy: {accuracy:.4f}")
+        print(f"🏆 Baseline F1-Score: {f1:.4f}")
         return True, accuracy
         
     except Exception as e:
@@ -134,7 +135,7 @@ def run_explainability_analysis():
         import torch
         import pickle
         import numpy as np
-        from models.lime_shap_explainer import HybridLIMESHAPExplainer
+        # from models.lime_shap_explainer import HybridLIMESHAPExplainer  # Commented out - might not proceed with this
         from models.scs_id import create_scs_id_model
         
         # Load processed data
@@ -155,29 +156,31 @@ def run_explainability_analysis():
         model.eval()
         
         # Initialize explainer
-        explainer = HybridLIMESHAPExplainer(
-            model=model,
-            feature_names=feature_names[:config.SELECTED_FEATURES],  # Use selected features
-            class_names=class_names
-        )
+        # explainer = HybridLIMESHAPExplainer(  # Commented out - might not proceed with this
+        #     model=model,
+        #     feature_names=feature_names[:config.SELECTED_FEATURES],  # Use selected features
+        #     class_names=class_names
+        # )
         
         # Setup explainers with training data
-        X_train_sample = data['X_train'][:1000]  # Sample for efficiency
-        explainer.setup_explainers(X_train_sample)
+        # X_train_sample = data['X_train'][:1000]  # Sample for efficiency
+        # explainer.setup_explainers(X_train_sample)
         
         # Generate explainability report
-        report_path = explainer.generate_explanation_report(X_test, y_test, num_samples=100)
+        # report_path = explainer.generate_explanation_report(X_test, y_test, num_samples=100)
         
         # Create sample explanation visualization
-        sample_instance = X_test[0]
-        explainer.visualize_explanation(
-            sample_instance, 
-            explanation_type='hybrid',
-            save_path=f"{config.RESULTS_DIR}/sample_explanation.png"
-        )
+        # sample_instance = X_test[0]
+        # explainer.visualize_explanation(
+        #     sample_instance, 
+        #     explanation_type='hybrid',
+        #     save_path=f"{config.RESULTS_DIR}/sample_explanation.png"
+        # )
         
-        print("✅ Explainability analysis completed successfully!")
-        print(f"📋 Report saved: {report_path}")
+        print("⚠️  Explainability analysis is currently disabled (lime_shap_explainer functionality)")
+        
+        print("✅ Explainability analysis step skipped!")
+        # print(f"📋 Report saved: {report_path}")
         return True
         
     except Exception as e:
