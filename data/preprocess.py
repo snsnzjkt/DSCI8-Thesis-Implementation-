@@ -88,6 +88,90 @@ class CICIDSPreprocessor:
             'Bot', 'PortScan', 'Heartbleed'
         ]
     
+    def handle_infinite_values(self, df):
+        """Handle infinite and problematic values in the dataset"""
+        print("🔧 Handling infinite and extreme values...")
+        
+        initial_rows = len(df)
+        initial_cols = len(df.columns)
+        
+        # Get numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        # Check for infinite values
+        inf_counts = {}
+        for col in numeric_cols:
+            inf_count = np.isinf(df[col]).sum()
+            if inf_count > 0:
+                inf_counts[col] = inf_count
+                
+        if inf_counts:
+            print(f"   Found infinite values in {len(inf_counts)} columns:")
+            for col, count in list(inf_counts.items())[:5]:  # Show first 5
+                print(f"     - {col}: {count:,} infinite values")
+            if len(inf_counts) > 5:
+                print(f"     ... and {len(inf_counts) - 5} more columns")
+        
+        # Replace infinite values with NaN
+        df = df.replace([np.inf, -np.inf], np.nan)
+        
+        # Handle extreme values (very large numbers that might cause numerical issues)
+        extreme_total = 0
+        for col in numeric_cols:
+            if col in df.columns:  # Check if column still exists
+                values = df[col].dropna()
+                if len(values) > 0:
+                    # Calculate reasonable bounds (99.9th percentile)
+                    try:
+                        upper_bound = values.quantile(0.999)
+                        lower_bound = values.quantile(0.001)
+                        
+                        # Cap extreme values
+                        extreme_mask = (df[col] > upper_bound) | (df[col] < lower_bound)
+                        extreme_count = extreme_mask.sum()
+                        
+                        if extreme_count > 0:
+                            df.loc[df[col] > upper_bound, col] = upper_bound
+                            df.loc[df[col] < lower_bound, col] = lower_bound
+                            extreme_total += extreme_count
+                            
+                    except Exception as e:
+                        print(f"     ⚠️  Issue processing {col}: {e}")
+        
+        if extreme_total > 0:
+            print(f"   Capped {extreme_total:,} extreme values")
+        
+        # Fill remaining NaN values with median (more robust than mean)
+        nan_filled = 0
+        for col in numeric_cols:
+            if col in df.columns and df[col].isnull().any():
+                null_count = df[col].isnull().sum()
+                median_val = df[col].median()
+                if not pd.isna(median_val):
+                    df[col].fillna(median_val, inplace=True)
+                else:
+                    # If median is NaN, use 0
+                    df[col].fillna(0, inplace=True)
+                nan_filled += null_count
+        
+        if nan_filled > 0:
+            print(f"   Filled {nan_filled:,} NaN values with median/zero")
+        
+        # Remove constant columns (they don't provide information and can cause issues)
+        constant_cols = []
+        for col in numeric_cols:
+            if col in df.columns and df[col].nunique() <= 1:
+                constant_cols.append(col)
+        
+        if constant_cols:
+            print(f"   Removing {len(constant_cols)} constant columns")
+            df = df.drop(columns=constant_cols)
+        
+        final_rows = len(df)
+        final_cols = len(df.columns)
+        print(f"   ✅ Cleaned data: {final_rows:,} rows, {final_cols} columns")
+        
+        return df
     def identify_file_type(self, filename):
         """Identify what attacks are in a file based on filename"""
         filename_lower = filename.lower()
@@ -218,6 +302,9 @@ class CICIDSPreprocessor:
         # Combine all dataframes
         print(f"\n🔗 Combining {len(all_dataframes)} files...")
         df_combined = pd.concat(all_dataframes, ignore_index=True)
+        
+        # Handle infinite and problematic values
+        df_combined = self.handle_infinite_values(df_combined)
         
         print(f"📊 Combined dataset: {len(df_combined):,} rows, {len(df_combined.columns)} columns")
         print(f"🏷️  Attack distribution:")
@@ -403,11 +490,31 @@ class CICIDSPreprocessor:
             print(f"   Applying SMOTE (max {target_count} per class)...")
             print(f"   Will oversample: {list(sampling_strategy.keys())}")
             
-            # Create SMOTE with proper typing
-            smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=5)  # type: ignore
+            # Additional data validation before SMOTE
+            print("   Validating data for SMOTE...")
+            
+            # Check for any remaining infinite or NaN values
+            if np.any(np.isinf(X.values)) or np.any(np.isnan(X.values)):
+                print("   ⚠️  Found remaining infinite/NaN values, cleaning...")
+                X = X.replace([np.inf, -np.inf], np.nan)
+                X = X.fillna(X.median())
+            
+            # Ensure all values are finite
+            finite_mask = np.isfinite(X.values).all(axis=1)
+            if not finite_mask.all():
+                print(f"   Removing {(~finite_mask).sum()} rows with non-finite values")
+                X = X.loc[finite_mask]
+                y = y[finite_mask]
+            
+            # Reduce k_neighbors if we have few samples for minority classes
+            min_class_count = min([counts[label] for label in sampling_strategy.keys()])
+            k_neighbors = min(5, max(1, min_class_count - 1))
+            
+            # Create SMOTE with adjusted parameters
+            smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=k_neighbors)
             
             try:
-                # Handle potential return type variations
+                print(f"   Running SMOTE (k_neighbors={k_neighbors})...")
                 result = smote.fit_resample(X, y)
                 if len(result) == 2:
                     X_balanced, y_balanced = result
@@ -415,9 +522,26 @@ class CICIDSPreprocessor:
                     # Handle cases where additional info might be returned
                     X_balanced, y_balanced = result[0], result[1]
                 balanced_counts = np.bincount(y_balanced)
-                print(f"   Balanced distribution: {balanced_counts}")
+                print(f"   ✅ SMOTE successful! Balanced distribution: {balanced_counts}")
+            except ValueError as e:
+                if "probabilities do not sum to 1" in str(e):
+                    print("   ⚠️  SMOTE probability error - trying with smaller k_neighbors...")
+                    try:
+                        # Try with k_neighbors=1
+                        smote_fallback = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=1)
+                        result = smote_fallback.fit_resample(X, y)
+                        X_balanced, y_balanced = result[0], result[1]
+                        print("   ✅ SMOTE successful with k_neighbors=1")
+                    except Exception as e2:
+                        print(f"   ❌ SMOTE failed even with fallback: {e2}")
+                        print("   Continuing without class balancing...")
+                        X_balanced, y_balanced = X, y
+                else:
+                    print(f"   ⚠️  SMOTE failed: {e}")
+                    print("   Continuing without class balancing...")
+                    X_balanced, y_balanced = X, y
             except Exception as e:
-                print(f"   ⚠️  SMOTE failed: {e}")
+                print(f"   ⚠️  SMOTE failed with unexpected error: {e}")
                 print("   Continuing without class balancing...")
                 X_balanced, y_balanced = X, y
         else:
