@@ -284,11 +284,37 @@ class SCSIDTrainer:
         
         # Evaluate
         self.model.load_state_dict(torch.load(f"{config.RESULTS_DIR}/scs_id_best_model.pth"))
-        test_acc, test_f1, _, _, y_true, y_pred = self.evaluate_model(self.model, test_loader)
+        test_acc, test_f1, precision, recall, y_true, y_pred = self.evaluate_model(self.model, test_loader)
         
-        # Save
+        # Generate classification report
+        from sklearn.metrics import classification_report
+        class_names = ['BENIGN', 'DDoS', 'PortScan']  # Match baseline format
+        clf_report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
+        
+        # Save complete results matching baseline format
+        results = {
+            'test_accuracy': test_acc,
+            'f1_score': test_f1,  # Changed from 'test_f1' to match baseline
+            'training_time': training_time,
+            'train_losses': self.train_losses,
+            'train_accuracies': self.train_accuracies,
+            'val_losses': self.val_losses,
+            'val_accuracies': self.val_accuracies,
+            'predictions': list(y_pred),
+            'labels': list(y_true),
+            'classification_report': clf_report,
+            'model_parameters': total_params,  # Changed from 'num_parameters'
+            'class_names': class_names,
+            'config': {
+                'batch_size': config.BATCH_SIZE,
+                'learning_rate': config.LEARNING_RATE,
+                'epochs': config.EPOCHS,
+                'model': 'SCS-ID'
+            }
+        }
+        
         with open(f"{config.RESULTS_DIR}/scs_id_results.pkl", 'wb') as f:
-            pickle.dump({'test_accuracy': test_acc, 'test_f1': test_f1, 'training_time': training_time, 'num_parameters': total_params}, f)
+            pickle.dump(results, f)
         
         print(f"\n🎉 COMPLETE: {training_time/60:.1f} min, Acc={test_acc*100:.2f}%, F1={test_f1:.4f}")
         return self.model, test_acc, test_f1
