@@ -13,6 +13,7 @@ from sklearn.metrics import (
     confusion_matrix, roc_auc_score, matthews_corrcoef,
     classification_report
 )
+from models.threshold_optimizer import ThresholdOptimizer
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -407,6 +408,189 @@ class ModelComparator:
         else:
             return "Very Large"
     
+    def compare_threshold_optimization(self):
+        """
+        Compare FPR reduction through threshold optimization
+        
+        This method demonstrates how threshold optimization achieves
+        the thesis requirement of FPR < 1% without modifying training.
+        """
+        print("\n" + "="*70)
+        print("🎯 THRESHOLD OPTIMIZATION COMPARISON")
+        print("="*70)
+        print("Comparing false positive reduction through post-training threshold optimization...")
+        
+        # Extract threshold optimization results
+        baseline_thresh = self.baseline_results.get('threshold_optimization', {})
+        scs_id_thresh = self.scs_id_results.get('threshold_optimization', {})
+        
+        if not baseline_thresh or not scs_id_thresh:
+            print("⚠️  Threshold optimization results not found in model outputs.")
+            print("   Please ensure threshold optimization was run during training.")
+            return None
+        
+        # Create comparison dictionary
+        threshold_comparison = {
+            'baseline': {
+                'original_fpr': baseline_thresh.get('original_fpr', 0),
+                'optimized_fpr': baseline_thresh.get('optimized_fpr', 0),
+                'optimal_threshold': baseline_thresh.get('optimal_threshold', 0.5),
+                'fpr_reduction': baseline_thresh.get('fpr_reduction_percentage', 0),
+                'optimized_tpr': baseline_thresh.get('optimized_tpr', 0),
+            },
+            'scs_id': {
+                'original_fpr': scs_id_thresh.get('original_fpr', 0),
+                'optimized_fpr': scs_id_thresh.get('optimized_fpr', 0),
+                'optimal_threshold': scs_id_thresh.get('optimal_threshold', 0.5),
+                'fpr_reduction': scs_id_thresh.get('fpr_reduction_percentage', 0),
+                'optimized_tpr': scs_id_thresh.get('optimized_tpr', 0),
+            }
+        }
+        
+        # Calculate relative improvement
+        baseline_fpr_opt = threshold_comparison['baseline']['optimized_fpr']
+        scs_id_fpr_opt = threshold_comparison['scs_id']['optimized_fpr']
+        
+        relative_fpr_improvement = (1 - scs_id_fpr_opt / baseline_fpr_opt) * 100 if baseline_fpr_opt > 0 else 0
+        
+        # Print comparison
+        print("\n📊 FALSE POSITIVE RATE COMPARISON")
+        print("-" * 70)
+        print(f"{'Metric':<35} {'Baseline CNN':<15} {'SCS-ID':<15}")
+        print("-" * 70)
+        print(f"{'Original FPR (no optimization)':<35} {threshold_comparison['baseline']['original_fpr']:.4f}         {threshold_comparison['scs_id']['original_fpr']:.4f}")
+        print(f"{'Optimized FPR':<35} {baseline_fpr_opt:.4f}         {scs_id_fpr_opt:.4f}")
+        print(f"{'Optimal Threshold':<35} {threshold_comparison['baseline']['optimal_threshold']:.6f}       {threshold_comparison['scs_id']['optimal_threshold']:.6f}")
+        print(f"{'FPR Reduction (%)':<35} {threshold_comparison['baseline']['fpr_reduction']:.2f}%          {threshold_comparison['scs_id']['fpr_reduction']:.2f}%")
+        print(f"{'Optimized TPR':<35} {threshold_comparison['baseline']['optimized_tpr']:.4f}         {threshold_comparison['scs_id']['optimized_tpr']:.4f}")
+        print("-" * 70)
+        
+        print(f"\n🎯 THESIS REQUIREMENT EVALUATION")
+        print("-" * 70)
+        print(f"Target: FPR < 1% (0.01)")
+        print(f"  Baseline CNN:  {baseline_fpr_opt:.4f} {'✅ MEETS' if baseline_fpr_opt < 0.01 else '❌ EXCEEDS'}")
+        print(f"  SCS-ID:        {scs_id_fpr_opt:.4f} {'✅ MEETS' if scs_id_fpr_opt < 0.01 else '❌ EXCEEDS'}")
+        print(f"\nTarget: >40% FPR reduction from baseline")
+        print(f"  SCS-ID achieves: {relative_fpr_improvement:.2f}% {'✅ MEETS' if relative_fpr_improvement >= 40 else '⚠️ Below'}")
+        print("-" * 70)
+        
+        # Visualization
+        self._plot_threshold_comparison(threshold_comparison, relative_fpr_improvement)
+        
+        return threshold_comparison
+
+    def _plot_threshold_comparison(self, threshold_comparison, relative_improvement):
+        """
+        Create visualization comparing threshold optimization results
+        """
+        import matplotlib.pyplot as plt
+        
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        
+        # Plot 1: FPR Comparison (Original vs Optimized)
+        ax1 = axes[0]
+        models = ['Baseline CNN', 'SCS-ID']
+        original_fprs = [
+            threshold_comparison['baseline']['original_fpr'],
+            threshold_comparison['scs_id']['original_fpr']
+        ]
+        optimized_fprs = [
+            threshold_comparison['baseline']['optimized_fpr'],
+            threshold_comparison['scs_id']['optimized_fpr']
+        ]
+        
+        x = np.arange(len(models))
+        width = 0.35
+        
+        bars1 = ax1.bar(x - width/2, original_fprs, width, label='Original FPR', color='#FF6B6B', alpha=0.8)
+        bars2 = ax1.bar(x + width/2, optimized_fprs, width, label='Optimized FPR', color='#4ECDC4', alpha=0.8)
+        
+        # Add threshold line
+        ax1.axhline(y=0.01, color='green', linestyle='--', linewidth=2, label='Target FPR (1%)')
+        
+        ax1.set_ylabel('False Positive Rate', fontsize=12, fontweight='bold')
+        ax1.set_title('FPR: Original vs Optimized', fontsize=14, fontweight='bold')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels(models)
+        ax1.legend()
+        ax1.grid(True, alpha=0.3, axis='y')
+        
+        # Add value labels
+        for bar in bars1 + bars2:
+            height = bar.get_height()
+            ax1.annotate(f'{height:.4f}',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom', fontsize=9)
+        
+        # Plot 2: FPR Reduction Percentage
+        ax2 = axes[1]
+        reductions = [
+            threshold_comparison['baseline']['fpr_reduction'],
+            threshold_comparison['scs_id']['fpr_reduction']
+        ]
+        
+        bars = ax2.bar(models, reductions, color=['#FF6B6B', '#4ECDC4'], alpha=0.8)
+        ax2.axhline(y=40, color='orange', linestyle=':', linewidth=2, label='Target (40%)')
+        ax2.set_ylabel('FPR Reduction (%)', fontsize=12, fontweight='bold')
+        ax2.set_title('FPR Reduction Achieved', fontsize=14, fontweight='bold')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3, axis='y')
+        
+        for bar, reduction in zip(bars, reductions):
+            height = bar.get_height()
+            ax2.annotate(f'{reduction:.1f}%',
+                        xy=(bar.get_x() + bar.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom', fontsize=10, fontweight='bold')
+        
+        # Plot 3: TPR vs FPR Trade-off
+        ax3 = axes[2]
+        
+        fprs = [threshold_comparison['baseline']['optimized_fpr'], 
+                threshold_comparison['scs_id']['optimized_fpr']]
+        tprs = [threshold_comparison['baseline']['optimized_tpr'],
+                threshold_comparison['scs_id']['optimized_tpr']]
+        
+        ax3.scatter(fprs[0], tprs[0], s=300, color='#FF6B6B', marker='o', 
+                   label='Baseline CNN', alpha=0.7, edgecolors='black', linewidth=2)
+        ax3.scatter(fprs[1], tprs[1], s=300, color='#4ECDC4', marker='*', 
+                   label='SCS-ID', alpha=0.7, edgecolors='black', linewidth=2)
+        
+        # Add target region
+        ax3.axvline(x=0.01, color='green', linestyle='--', linewidth=2, alpha=0.5, label='Target FPR')
+        ax3.fill_betweenx([0, 1], 0, 0.01, color='green', alpha=0.1, label='Target Region')
+        
+        ax3.set_xlabel('False Positive Rate', fontsize=12, fontweight='bold')
+        ax3.set_ylabel('True Positive Rate', fontsize=12, fontweight='bold')
+        ax3.set_title('TPR vs FPR Trade-off', fontsize=14, fontweight='bold')
+        ax3.legend(loc='lower right')
+        ax3.grid(True, alpha=0.3)
+        ax3.set_xlim([0, max(fprs) * 1.2])
+        ax3.set_ylim([0.9, 1.0])
+        
+        # Add annotations
+        for i, model in enumerate(models):
+            ax3.annotate(f'{model}\nFPR: {fprs[i]:.4f}\nTPR: {tprs[i]:.4f}',
+                        xy=(fprs[i], tprs[i]),
+                        xytext=(10, -10 if i == 0 else 10),
+                        textcoords='offset points',
+                        fontsize=9,
+                        bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.3),
+                        arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
+        
+        plt.tight_layout()
+        
+        # Save figure
+        output_dir = Path(config.RESULTS_DIR)
+        output_dir.mkdir(exist_ok=True)
+        output_path = output_dir / "threshold_optimization_comparison.png"
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"\n📊 Threshold comparison plot saved to: {output_path}")
+        plt.close()
+    
     def create_comparison_visualizations(self):
         """Create comprehensive comparison visualizations"""
         print("\n📊 Creating comparison visualizations...")
@@ -714,6 +898,9 @@ Statistical Significance: {'CONFIRMED' if test_results['significance_test']['sig
             self.calculate_computational_metrics()
             self.compare_detection_performance()
             
+            # NEW: Add threshold optimization comparison
+            threshold_results = self.compare_threshold_optimization()
+            
             # Statistical analysis
             self.perform_statistical_tests()
             
@@ -737,7 +924,8 @@ Statistical Significance: {'CONFIRMED' if test_results['significance_test']['sig
             return {
                 'computational_metrics': self.computational_metrics,
                 'performance_comparison': self.performance_comparison,
-                'statistical_tests': self.statistical_tests
+                'statistical_tests': self.statistical_tests,
+                'threshold_optimization': threshold_results
             }
             
         except Exception as e:
