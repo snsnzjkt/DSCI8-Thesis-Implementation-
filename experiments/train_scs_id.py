@@ -294,16 +294,16 @@ class SCSIDTrainer:
         # Save complete results matching baseline format
         results = {
             'test_accuracy': test_acc,
-            'f1_score': test_f1,  # Changed from 'test_f1' to match baseline
+            'f1_score': test_f1,
             'training_time': training_time,
             'train_losses': self.train_losses,
             'train_accuracies': self.train_accuracies,
             'val_losses': self.val_losses,
             'val_accuracies': self.val_accuracies,
-            'predictions': list(y_pred),
-            'labels': list(y_true),
+            'predictions': y_pred,  # Keep as numpy array
+            'labels': y_true,       # Keep as numpy array
             'classification_report': clf_report,
-            'model_parameters': total_params,  # Changed from 'num_parameters'
+            'total_parameters': total_params,  # Match baseline field name
             'class_names': class_names,
             'config': {
                 'batch_size': config.BATCH_SIZE,

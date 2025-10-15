@@ -646,7 +646,7 @@ Statistical Significance: {'CONFIRMED' if test_results['significance_test']['sig
         
         report_path = f"{config.RESULTS_DIR}/model_comparison_report.txt"
         
-        with open(report_path, 'w') as f:
+        with open(report_path, 'w', encoding='utf-8') as f:
             f.write("SCS-ID vs Baseline CNN: Comprehensive Comparison Report\n")
             f.write("=" * 60 + "\n\n")
             
