@@ -11,6 +11,7 @@ import seaborn as sns
 import time
 import os
 from pathlib import Path
+from models.threshold_optimizer import ThresholdOptimizer
 
 try:
     from config import config
@@ -400,7 +401,7 @@ class BaselineTrainer:
         
         print(f"   ✅ Confusion matrix saved: {config.RESULTS_DIR}/baseline_confusion_matrix.png")
     
-    def save_results(self, model, accuracy, f1, predictions, labels, report, training_time, class_names):
+    def save_results(self, model, accuracy, f1, predictions, labels, report, training_time, class_names, threshold_results=None):
         """Save model and results"""
         print("\n💾 Saving results...")
         
@@ -431,6 +432,10 @@ class BaselineTrainer:
             }
         }
         
+        # Add threshold optimization results if available
+        if threshold_results:
+            results['threshold_optimization'] = threshold_results
+        
         results_path = f"{config.RESULTS_DIR}/baseline_results.pkl"
         with open(results_path, 'wb') as f:
             pickle.dump(results, f)
@@ -452,6 +457,15 @@ class BaselineTrainer:
             f.write(f"  Batch Size: {config.BATCH_SIZE}\n")
             f.write(f"  Learning Rate: {config.LEARNING_RATE}\n")
             f.write(f"  Epochs: {config.EPOCHS}\n")
+            
+            # Add threshold optimization results if available
+            if threshold_results:
+                f.write(f"\nThreshold Optimization Results:\n")
+                f.write(f"  Optimal Threshold: {threshold_results['optimal_threshold']:.4f}\n")
+                f.write(f"  Original FPR: {threshold_results['original_fpr']:.4f} ({threshold_results['original_fpr']*100:.2f}%)\n")
+                f.write(f"  Optimized FPR: {threshold_results['optimized_fpr']:.4f} ({threshold_results['optimized_fpr']*100:.2f}%)\n")
+                f.write(f"  FPR Reduction: {threshold_results['fpr_reduction_percentage']:.2f}%\n")
+                f.write(f"  Optimized TPR: {threshold_results['optimized_tpr']:.4f} ({threshold_results['optimized_tpr']*100:.2f}%)\n")
         
         print(f"   ✅ Summary saved: {summary_path}")
     
@@ -533,8 +547,94 @@ class BaselineTrainer:
         self.plot_training_curves()
         self.plot_confusion_matrix(labels, predictions, class_names)
         
+        print("\n" + "="*70)
+        print("🎯 BASELINE: THRESHOLD OPTIMIZATION")
+        print("="*70)
+        print("Optimizing baseline model threshold for fair comparison with SCS-ID...")
+
+        # Get prediction probabilities from test set
+        print("\n📊 Collecting baseline predictions with probabilities...")
+        self.model.eval()
+        y_pred_proba_list = []
+        y_true_list = []
+
+        with torch.no_grad():
+            for data, target in test_loader:
+                data, target = data.to(self.device), target.to(self.device)
+                
+                output = self.model(data)
+                proba = torch.softmax(output, dim=1)  # Get probabilities
+                
+                y_pred_proba_list.append(proba.cpu().numpy())
+                y_true_list.append(target.cpu().numpy())
+
+        # Concatenate all batches
+        y_pred_proba = np.vstack(y_pred_proba_list)
+        y_true_full = np.concatenate(y_true_list)
+
+        print(f"   ✅ Collected {len(y_true_full):,} predictions")
+
+        # Initialize threshold optimizer
+        threshold_optimizer = ThresholdOptimizer(target_fpr=0.01)
+
+        # Optimize threshold
+        baseline_opt_results = threshold_optimizer.optimize_threshold(
+            y_true_full,
+            y_pred_proba,
+            verbose=True
+        )
+
+        # Calculate metrics with optimized threshold
+        baseline_opt_metrics = threshold_optimizer.calculate_metrics_with_threshold(
+            y_true_full,
+            y_pred_proba,
+            verbose=True
+        )
+
+        # Save plots
+        output_dir = f"{config.RESULTS_DIR}/baseline/threshold_optimization"
+        os.makedirs(output_dir, exist_ok=True)
+
+        print(f"\n📊 Saving baseline threshold optimization visualizations...")
+        threshold_optimizer.plot_roc_curve(
+            save_path=f"{output_dir}/baseline_roc_curve_optimized.png"
+        )
+        threshold_optimizer.plot_threshold_analysis(
+            save_path=f"{output_dir}/baseline_threshold_analysis.png"
+        )
+        plt.close('all')
+
+        # Calculate original FPR for comparison
+        binary_true = (y_true_full > 0).astype(int)
+        binary_pred_default = (y_pred_proba.argmax(axis=1) > 0).astype(int)
+        cm_default = confusion_matrix(binary_true, binary_pred_default)
+        tn, fp, fn, tp = cm_default.ravel()
+        baseline_original_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+
+        baseline_fpr_reduction = (1 - baseline_opt_metrics['fpr'] / baseline_original_fpr) * 100 if baseline_original_fpr > 0 else 0
+
+        print("\n" + "="*70)
+        print("📈 BASELINE FPR OPTIMIZATION SUMMARY")
+        print("="*70)
+        print(f"Original FPR:   {baseline_original_fpr:.4f} ({baseline_original_fpr*100:.2f}%)")
+        print(f"Optimized FPR:  {baseline_opt_metrics['fpr']:.4f} ({baseline_opt_metrics['fpr']*100:.2f}%)")
+        print(f"FPR Reduction:  {baseline_fpr_reduction:.2f}%")
+        print("="*70)
+
+        # Store in results for comparison
+        baseline_threshold_results = {
+            'optimal_threshold': baseline_opt_results['optimal_threshold'],
+            'original_fpr': baseline_original_fpr,
+            'optimized_fpr': baseline_opt_metrics['fpr'],
+            'fpr_reduction_percentage': baseline_fpr_reduction,
+            'optimized_tpr': baseline_opt_metrics['tpr'],
+            'optimized_metrics': baseline_opt_metrics
+        }
+
+        print("\n✅ Baseline threshold optimization complete!")
+        
         # Save results
-        self.save_results(self.model, accuracy, f1, predictions, labels, report, training_time, class_names)
+        self.save_results(self.model, accuracy, f1, predictions, labels, report, training_time, class_names, baseline_threshold_results)
         
         print("\n" + "=" * 60)
         print("✅ BASELINE TRAINING COMPLETE!")
