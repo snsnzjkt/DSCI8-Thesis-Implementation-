@@ -1,4 +1,10 @@
 # experiments/compare_models.py - Complete Model Comparison and Statistical Analysis
+import sys
+from pathlib import Path
+
+# Add parent directory to Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 import torch
 import numpy as np
 import pandas as pd
@@ -6,7 +12,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 import time
-from pathlib import Path
 from scipy import stats
 from sklearn.metrics import (
     accuracy_score, precision_recall_fscore_support, 

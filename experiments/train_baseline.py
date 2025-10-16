@@ -1,4 +1,10 @@
 # experiments/train_baseline.py - Reviewed and Fixed for CIC-IDS2017
+import sys
+from pathlib import Path
+
+# Add parent directory to Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,7 +16,6 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 import seaborn as sns
 import time
 import os
-from pathlib import Path
 from models.threshold_optimizer import ThresholdOptimizer
 
 try:

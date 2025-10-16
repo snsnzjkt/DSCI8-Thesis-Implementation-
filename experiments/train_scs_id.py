@@ -5,6 +5,12 @@ FIXED: Fast feature selection (2-5 min) replaces slow DeepSeek RL (hours)
 
 Complete thesis implementation for RTX 4050
 """
+import sys
+from pathlib import Path
+
+# Add parent directory to Python path
+sys.path.append(str(Path(__file__).parent.parent))
+
 from models.threshold_optimizer import ThresholdOptimizer, optimize_model_threshold
 import numpy as np
 import torch
@@ -14,15 +20,11 @@ from torch.utils.data import DataLoader, TensorDataset
 import pickle
 import time
 import os
-import sys
-from pathlib import Path
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix, classification_report
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectKBest, f_classif
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-sys.path.append(str(Path(__file__).parent.parent))
 from config import config
 from models.scs_id import create_scs_id_model
 from data.preprocess import CICIDSPreprocessor
