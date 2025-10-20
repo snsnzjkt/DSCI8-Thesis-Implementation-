@@ -371,7 +371,6 @@ class SCSIDTrainer:
         
         # Generate classification report
         from sklearn.metrics import classification_report
-        class_names = ['BENIGN', 'DDoS', 'PortScan']  # Match baseline format
         clf_report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
         
         # Save complete results matching baseline format
