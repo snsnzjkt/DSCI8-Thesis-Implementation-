@@ -57,10 +57,10 @@ class CICIDSPreprocessor:
             },
             'Wednesday': {
                 'attacks': ['BENIGN', 'DoS GoldenEye', 'DoS Hulk', 'DoS Slowhttptest', 'DoS slowloris', 'Heartbleed'],
-                'distribution': [0.7, 0.06, 0.15, 0.06, 0.06, 0.01]  # DoS heavy day
+                'distribution': [0.67, 0.06, 0.15, 0.06, 0.06, 0.01]  # DoS heavy day - Fixed to sum to 1.01 ≈ 1.0
             },
             'Thursday-Morning-WebAttacks': {
-                'attacks': ['BENIGN', 'Web Attack – Brute Force', 'Web Attack – XSS', 'Web Attack – Sql Injection'],
+                'attacks': ['BENIGN', 'Web Attack - Brute Force', 'Web Attack - XSS', 'Web Attack - Sql Injection'],
                 'distribution': [0.8, 0.07, 0.07, 0.06]  # Web attacks
             },
             'Thursday-Afternoon-Infilteration': {
@@ -83,8 +83,8 @@ class CICIDSPreprocessor:
         
         self.all_attack_types = [
             'BENIGN', 'DDoS', 'DoS GoldenEye', 'DoS Hulk', 'DoS Slowhttptest',
-            'DoS slowloris', 'FTP-Patator', 'SSH-Patator', 'Web Attack – Brute Force',
-            'Web Attack – Sql Injection', 'Web Attack – XSS', 'Infiltration',
+            'DoS slowloris', 'FTP-Patator', 'SSH-Patator', 'Web Attack - Brute Force',
+            'Web Attack - Sql Injection', 'Web Attack - XSS', 'Infiltration',
             'Bot', 'PortScan', 'Heartbleed'
         ]
     
@@ -263,29 +263,53 @@ class CICIDSPreprocessor:
                 # Clean column names
                 df.columns = df.columns.str.strip()
                 
-                # Remove any existing label columns (just in case)
+                # Check if file already has labels
+                has_labels = False
                 label_cols = [col for col in df.columns if 'label' in col.lower()]
-                if label_cols:
-                    df = df.drop(columns=label_cols)
                 
-                rows = len(df)
-                print(f"      📈 {rows:,} rows, {len(df.columns)} features")
+                if label_cols and not df[label_cols[0]].isna().all():
+                    # Use existing labels
+                    has_labels = True
+                    label_col = label_cols[0]
+                    if label_col != 'Label':
+                        df = df.rename(columns={label_col: 'Label'})
+                    
+                    # Remove other label columns if any
+                    other_label_cols = [col for col in label_cols if col != label_col]
+                    if other_label_cols:
+                        df = df.drop(columns=other_label_cols)
+                        
+                    rows = len(df)
+                    print(f"      📈 {rows:,} rows, {len(df.columns)-1} features")
+                    print(f"      🏷️  Using existing labels: {dict(zip(*np.unique(df['Label'], return_counts=True)))}")
                 
-                # Create labels based on filename
-                file_info = self.identify_file_type(file_path.name)
-                attacks = file_info['attacks']
-                distribution = file_info['distribution']
-                
-                # Assign labels based on distribution
-                labels = np.random.choice(
-                    attacks, 
-                    size=rows, 
-                    p=distribution
-                )
-                
-                df['Label'] = labels
-                
-                print(f"      🏷️  Added labels: {dict(zip(*np.unique(labels, return_counts=True)))}")
+                else:
+                    # Remove any empty label columns
+                    if label_cols:
+                        df = df.drop(columns=label_cols)
+                    
+                    rows = len(df)
+                    print(f"      📈 {rows:,} rows, {len(df.columns)} features")
+                    
+                    # Create labels based on filename
+                    file_info = self.identify_file_type(file_path.name)
+                    attacks = file_info['attacks']
+                    distribution = file_info['distribution']
+                    
+                    # Normalize distribution to ensure it sums to 1
+                    distribution = np.array(distribution)
+                    distribution = distribution / distribution.sum()
+                    
+                    # Assign labels based on distribution
+                    labels = np.random.choice(
+                        attacks, 
+                        size=rows, 
+                        p=distribution
+                    )
+                    
+                    df['Label'] = labels
+                    
+                    print(f"      🏷️  Added labels: {dict(zip(*np.unique(labels, return_counts=True)))}")
                 
                 all_dataframes.append(df)
                 total_rows += rows
@@ -366,11 +390,36 @@ class CICIDSPreprocessor:
         
         return df
     
+    def clean_unicode_labels(self, labels):
+        """Clean Unicode characters from attack labels"""
+        cleaned_labels = []
+        for label in labels:
+            # Replace common Unicode dashes and characters
+            cleaned = str(label).replace('–', '-').replace('—', '-').replace('�', '-')
+            # Fix known Web Attack labels
+            if 'Web Attack' in cleaned and '�' in cleaned:
+                if 'Brute Force' in cleaned:
+                    cleaned = 'Web Attack - Brute Force'
+                elif 'Sql Injection' in cleaned:
+                    cleaned = 'Web Attack - Sql Injection'
+                elif 'XSS' in cleaned:
+                    cleaned = 'Web Attack - XSS'
+            cleaned_labels.append(cleaned)
+        return cleaned_labels
+
     def clean_data(self, df):
         """Clean and prepare the dataset"""
         print("\n🧹 Cleaning data...")
         
         print(f"   Original shape: {df.shape}")
+        
+        # Clean Unicode characters in labels
+        if 'Label' in df.columns:
+            original_labels = df['Label'].unique()
+            df['Label'] = self.clean_unicode_labels(df['Label'])
+            cleaned_labels = df['Label'].unique()
+            if len(set(original_labels) - set(cleaned_labels)) > 0:
+                print("   Fixed Unicode characters in attack labels")
         
         # Handle infinite values
         print("   Replacing infinite values...")
@@ -482,7 +531,9 @@ class CICIDSPreprocessor:
         
         # Create sampling strategy (only oversample minority classes)
         sampling_strategy = {}
-        for label, count in zip(unique_labels, counts):
+        label_to_count = dict(zip(unique_labels, counts))
+        
+        for label, count in label_to_count.items():
             if count < target_count:
                 sampling_strategy[label] = min(target_count, count * 3)  # Max 3x increase
         
@@ -507,11 +558,20 @@ class CICIDSPreprocessor:
                 y = y[finite_mask]
             
             # Reduce k_neighbors if we have few samples for minority classes
-            min_class_count = min([counts[label] for label in sampling_strategy.keys()])
+            min_class_count = min([label_to_count[label] for label in sampling_strategy.keys()])
             k_neighbors = min(5, max(1, min_class_count - 1))
             
             # Create SMOTE with adjusted parameters
-            smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=k_neighbors)
+            # Handle different SMOTE versions by checking parameter compatibility
+            try:
+                # Try with dictionary sampling strategy (newer versions)
+                # Type ignore for compatibility across different imbalanced-learn versions
+                smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=k_neighbors)  # type: ignore
+            except (TypeError, ValueError) as smote_error:
+                # Fallback to 'auto' strategy for compatibility
+                print(f"   SMOTE sampling strategy error: {smote_error}")
+                print("   Using 'auto' sampling strategy for SMOTE compatibility")
+                smote = SMOTE(random_state=42, sampling_strategy='auto', k_neighbors=k_neighbors)
             
             try:
                 print(f"   Running SMOTE (k_neighbors={k_neighbors})...")
@@ -527,8 +587,8 @@ class CICIDSPreprocessor:
                 if "probabilities do not sum to 1" in str(e):
                     print("   ⚠️  SMOTE probability error - trying with smaller k_neighbors...")
                     try:
-                        # Try with k_neighbors=1
-                        smote_fallback = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=1)
+                        # Try with k_neighbors=1 and auto strategy
+                        smote_fallback = SMOTE(random_state=42, sampling_strategy='auto', k_neighbors=1)
                         result = smote_fallback.fit_resample(X, y)
                         X_balanced, y_balanced = result[0], result[1]
                         print("   ✅ SMOTE successful with k_neighbors=1")
