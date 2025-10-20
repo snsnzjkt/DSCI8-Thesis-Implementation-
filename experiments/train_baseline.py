@@ -489,6 +489,21 @@ class BaselineTrainer:
         input_features = X_train.shape[1]
         self.model = BaselineCNN(input_features, num_classes).to(self.device)
         
+        # Clean up any incompatible checkpoints from previous runs
+        best_model_path = f"{config.RESULTS_DIR}/best_baseline_model.pth"
+        if os.path.exists(best_model_path):
+            try:
+                # Try to load the checkpoint to see if it's compatible
+                test_state = torch.load(best_model_path)
+                self.model.load_state_dict(test_state)
+                print(f"   ♻️  Found compatible checkpoint: {best_model_path}")
+            except RuntimeError as e:
+                if "size mismatch" in str(e):
+                    print(f"   🗑️  Removing incompatible checkpoint from previous run")
+                    os.remove(best_model_path)
+                else:
+                    raise e
+        
         # Model info
         total_params = sum(p.numel() for p in self.model.parameters())
         trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
@@ -542,8 +557,22 @@ class BaselineTrainer:
         training_time = time.time() - start_time
         print(f"\n⏱️  Training completed in {training_time:.2f} seconds ({training_time/60:.1f} minutes)")
         
-        # Load best model for evaluation
-        self.model.load_state_dict(torch.load(f"{config.RESULTS_DIR}/best_baseline_model.pth"))
+        # Load best model for evaluation with error handling
+        best_model_path = f"{config.RESULTS_DIR}/best_baseline_model.pth"
+        try:
+            self.model.load_state_dict(torch.load(best_model_path))
+            print(f"   ✅ Loaded best model from: {best_model_path}")
+        except RuntimeError as e:
+            if "size mismatch" in str(e):
+                print(f"   ⚠️  Model architecture mismatch detected!")
+                print(f"   🔄 Using current trained model instead of saved checkpoint")
+                print(f"   💡 This can happen when switching between different dataset sizes")
+                # Remove the incompatible checkpoint
+                if os.path.exists(best_model_path):
+                    os.remove(best_model_path)
+                    print(f"   🗑️  Removed incompatible checkpoint: {best_model_path}")
+            else:
+                raise e
         
         # Evaluation
         accuracy, f1, predictions, labels, report = self.evaluate_model(self.model, test_loader, class_names)
