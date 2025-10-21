@@ -138,7 +138,7 @@ if __name__ == "__main__":
     model = create_baseline_model()
     
     # Test forward pass
-    batch_size = 32
+    batch_size = 64
     input_features = 78
     x = torch.randn(batch_size, input_features)
     

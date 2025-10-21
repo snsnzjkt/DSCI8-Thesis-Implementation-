@@ -25,7 +25,7 @@ except ImportError:
     class Config:
         DATA_DIR = "data"
         RESULTS_DIR = "results"
-        BATCH_SIZE = 32
+        BATCH_SIZE = 64
         LEARNING_RATE = 1e-4
         EPOCHS = 25
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
