@@ -118,7 +118,8 @@ class SCSIDTrainer:
         y_train = data['y_train']
         y_test = data['y_test']
         
-        num_classes = len(np.unique(y_train))
+        # Use stored metadata for consistency with baseline (not recalculated from train set)
+        num_classes = data['num_classes']  # Use stored value, not len(np.unique(y_train))
         class_names = data.get('class_names', [f"Class_{i}" for i in range(num_classes)])
         feature_names = data.get('feature_names', [f"Feature_{i}" for i in range(X_train.shape[1])])
         
@@ -230,55 +231,32 @@ class SCSIDTrainer:
         # Load & select features
         X_train, X_test, y_train, y_test, num_classes, class_names, _ = self.load_processed_data()
         
-        # Check and fix label consistency issues
-        print(f"\n🔍 CHECKING LABEL CONSISTENCY")
+        # Check label distribution (informational only - don't modify data)
+        print(f"\n🔍 LABEL DISTRIBUTION ANALYSIS")
         train_classes = set(np.unique(y_train))
         test_classes = set(np.unique(y_test))
-        all_classes = train_classes.union(test_classes)
+        all_classes = set(range(num_classes))
         
+        print(f"   Expected classes (from metadata): {sorted(all_classes)} (count: {num_classes})")
         print(f"   Train classes: {sorted(train_classes)} (count: {len(train_classes)})")
         print(f"   Test classes: {sorted(test_classes)} (count: {len(test_classes)})")
-        print(f"   All classes: {sorted(all_classes)} (count: {len(all_classes)})")
         
-        if train_classes != test_classes:
-            print("   ⚠️  Class mismatch detected!")
-            missing_in_train = test_classes - train_classes
-            missing_in_test = train_classes - test_classes
-            
-            if missing_in_train:
-                print(f"   Missing in train: {sorted(missing_in_train)}")
-            if missing_in_test:
-                print(f"   Missing in test: {sorted(missing_in_test)}")
-            
-            print("   🔧 Using intersection of both sets for consistency...")
-            common_classes = train_classes.intersection(test_classes)
-            print(f"   Common classes: {sorted(common_classes)} (count: {len(common_classes)})")
-            
-            # Filter data to only include common classes
-            train_mask = np.isin(y_train, list(common_classes))
-            test_mask = np.isin(y_test, list(common_classes))
-            
-            X_train = X_train[train_mask]
-            y_train = y_train[train_mask]
-            X_test = X_test[test_mask]
-            y_test = y_test[test_mask]
-            
-            # Remap labels to be continuous (0, 1, 2, ...)
-            unique_labels = sorted(common_classes)
-            label_mapping = {old_label: new_label for new_label, old_label in enumerate(unique_labels)}
-            
-            y_train = np.array([label_mapping[label] for label in y_train])
-            y_test = np.array([label_mapping[label] for label in y_test])
-            
-            # Update metadata
-            num_classes = len(unique_labels)
-            class_names = [class_names[i] for i in unique_labels]
-            
-            print(f"   ✅ Remapped to {num_classes} consistent classes")
-            print(f"   Final train samples: {len(X_train):,}")
-            print(f"   Final test samples: {len(X_test):,}")
-        else:
-            print("   ✅ Labels are consistent between train and test sets")
+        missing_in_train = all_classes - train_classes
+        missing_in_test = all_classes - test_classes
+        
+        if missing_in_train:
+            missing_names = [class_names[i] for i in missing_in_train]
+            print(f"   ⚠️  Classes missing in train: {sorted(missing_in_train)} ({missing_names})")
+            print("       This is normal - some rare attacks may not appear in training data")
+        
+        if missing_in_test:
+            missing_names = [class_names[i] for i in missing_in_test]
+            print(f"   ⚠️  Classes missing in test: {sorted(missing_in_test)} ({missing_names})")
+        
+        if not missing_in_train and not missing_in_test:
+            print("   ✅ All classes present in both train and test sets")
+        
+        print(f"   📊 Using all {num_classes} classes as defined in original preprocessing")
         
         X_train_sel, X_test_sel, _ = self.apply_feature_selection(X_train, X_test, y_train, y_test)
         
@@ -292,19 +270,21 @@ class SCSIDTrainer:
         
         # Final safety check on labels
         print(f"\n🔍 FINAL LABEL VALIDATION")
-        print(f"   Train labels range: {y_tr.min()}-{y_tr.max()} (expected: 0-{num_classes-1})")
-        print(f"   Val labels range: {y_val.min()}-{y_val.max()} (expected: 0-{num_classes-1})")
-        print(f"   Test labels range: {y_test.min()}-{y_test.max()} (expected: 0-{num_classes-1})")
+        print(f"   Model expects: {num_classes} classes (0-{num_classes-1})")
+        print(f"   Train labels range: {y_tr.min()}-{y_tr.max()}")
+        print(f"   Val labels range: {y_val.min()}-{y_val.max()}")
+        print(f"   Test labels range: {y_test.min()}-{y_test.max()}")
         
-        # Verify all labels are in valid range
-        assert y_tr.min() >= 0 and y_tr.max() < num_classes, f"Invalid train labels: {y_tr.min()}-{y_tr.max()}"
-        assert y_val.min() >= 0 and y_val.max() < num_classes, f"Invalid val labels: {y_val.min()}-{y_val.max()}"
-        assert y_test.min() >= 0 and y_test.max() < num_classes, f"Invalid test labels: {y_test.min()}-{y_test.max()}"
-        print("   ✅ All labels are in valid range")
+        # Verify all labels are in valid range for the model
+        assert y_tr.min() >= 0 and y_tr.max() < num_classes, f"Invalid train labels: {y_tr.min()}-{y_tr.max()} (expected: 0-{num_classes-1})"
+        assert y_val.min() >= 0 and y_val.max() < num_classes, f"Invalid val labels: {y_val.min()}-{y_val.max()} (expected: 0-{num_classes-1})"
+        assert y_test.min() >= 0 and y_test.max() < num_classes, f"Invalid test labels: {y_test.min()}-{y_test.max()} (expected: 0-{num_classes-1})"
+        print("   ✅ All labels are in valid range for the model")
         
-        # Model - Use actual num_classes from data, not config
+        # Model - Use num_classes from preprocessed data (same as baseline)
         print("\n🧠 MODEL")
-        print(f"   Using {num_classes} classes (from data) instead of config.NUM_CLASSES={config.NUM_CLASSES}")
+        print(f"   Using {num_classes} classes (from preprocessed metadata)")
+        print(f"   Config NUM_CLASSES={config.NUM_CLASSES} (ignored for consistency)")
         self.model = create_scs_id_model(config.SELECTED_FEATURES, num_classes, True, config.PRUNING_RATIO).to(self.device)
         total_params, _ = self.model.count_parameters()
         print(f"✅ Parameters: {total_params:,}")
