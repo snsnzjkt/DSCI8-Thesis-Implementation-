@@ -22,7 +22,7 @@ except ImportError:
         NUM_FEATURES = 78
         SELECTED_FEATURES = 42
         NUM_CLASSES = 16
-        BATCH_SIZE = 32
+        BATCH_SIZE = 64
         DEVICE = "cpu"
         
         os.makedirs(DATA_DIR, exist_ok=True)

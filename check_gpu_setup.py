@@ -136,7 +136,7 @@ def check_training_requirements():
     
     # Check if we can handle the expected batch size
     try:
-        batch_size = 32  # From your config
+        batch_size = 64  # From your config
         num_features = 78  # From your thesis
         
         if torch.cuda.is_available():

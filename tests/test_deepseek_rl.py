@@ -200,7 +200,7 @@ class TestDQNAgent(unittest.TestCase):
             self.agent.remember(state, action, reward, next_state, done)
         
         # Perform replay
-        loss = self.agent.replay(batch_size=32)
+        loss = self.agent.replay(batch_size=64)
         
         self.assertIsInstance(loss, float)
         self.assertGreaterEqual(loss, 0)
@@ -216,7 +216,7 @@ class TestDQNAgent(unittest.TestCase):
             self.agent.remember(state, 1, 0.5, state, False)
         
         for _ in range(10):
-            self.agent.replay(batch_size=32)
+            self.agent.replay(batch_size=64)
         
         self.assertLess(self.agent.epsilon, initial_epsilon)
         print("✓ Epsilon decay test passed")

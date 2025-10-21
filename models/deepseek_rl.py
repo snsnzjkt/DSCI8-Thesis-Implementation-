@@ -294,7 +294,7 @@ class DQNAgent:
             q_values = self.q_network(state_tensor)
         return np.argmax(q_values.cpu().data.numpy())
     
-    def replay(self, batch_size=32):
+    def replay(self, batch_size=64):
         """
         Train the model on a batch of experiences
         Implements experience replay for stable learning
@@ -410,7 +410,7 @@ class DeepSeekRL:
                 
                 # Train agent
                 if len(self.agent.memory) >= 32:
-                    loss = self.agent.replay(batch_size=32)
+                    loss = self.agent.replay(batch_size=64)
                     episode_loss.append(loss)
                 
                 episode_reward += reward
