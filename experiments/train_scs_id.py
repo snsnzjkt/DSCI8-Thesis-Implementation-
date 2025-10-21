@@ -1,9 +1,15 @@
 # experiments/train_scs_id.py
 """
-SCS-ID Training - OPTIMIZED VERSION
-FIXED: Fast feature selection (2-5 min) replaces slow DeepSeek RL (hours)
+SCS-ID Training with DeepSeek RL Feature Selection + Structured Pruning + INT8 Quantization
+Uses the full DeepSeek RL reinforcement learning approach for optimal feature selection
 
-Complete thesis implementation for RTX 4050
+Complete thesis implementation:
+- DeepSeek RL feature selection (78 → 42 features) 
+- 30% structured pruning (post-training)
+- INT8 quantization (~75% additional size reduction)
+- Threshold optimization (FPR < 1%)
+
+Warning: This will take significantly longer than FastFeatureSelector (30-60+ minutes)
 """
 import sys
 from pathlib import Path
@@ -12,6 +18,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from models.threshold_optimizer import ThresholdOptimizer, optimize_model_threshold
+from models.deepseek_rl import DeepSeekRL  # Import DeepSeek RL
 import numpy as np
 import torch
 import torch.nn as nn
@@ -26,50 +33,62 @@ from sklearn.feature_selection import SelectKBest, f_classif
 import matplotlib.pyplot as plt
 import seaborn as sns
 from config import config
-from models.scs_id import create_scs_id_model
+from models.scs_id import create_scs_id_model, apply_structured_pruning, apply_quantization
 from data.preprocess import CICIDSPreprocessor
 
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
 
 
-class FastFeatureSelector:
-    """Fast hybrid feature selection: Statistical + RF (2-5 min)"""
+class DeepSeekFeatureSelector:
+    """DeepSeek RL-based feature selection for optimal feature selection"""
     
     def __init__(self, target_features=42):
         self.target_features = target_features
         self.selected_features_idx = None
+        self.deepseek_rl = None
         
-    def fit(self, X_train, y_train, X_val=None, y_val=None):
-        print(f"\n🚀 FAST FEATURE SELECTION: {X_train.shape[1]} → {self.target_features}")
+    def fit(self, X_train, y_train, X_val=None, y_val=None, episodes=200):
+        print(f"\nDEEPSEEK RL FEATURE SELECTION: {X_train.shape[1]} → {self.target_features}")
+        print("   This uses reinforcement learning for optimal feature selection")
+        print(f"   Training episodes: {episodes}")
         start_time = time.time()
         
-        # Stage 1: Statistical filtering
-        n_stat = min(self.target_features * 2, X_train.shape[1])
-        selector = SelectKBest(score_func=f_classif, k=n_stat)
-        selector.fit(X_train, y_train)
-        stat_features = selector.get_support(indices=True)
-        X_filtered = X_train[:, stat_features]
-        print(f"   Stage 1: {len(stat_features)} features (F-test)")
+        # If no validation set provided, create one from training data
+        if X_val is None or y_val is None:
+            print("   Creating validation split from training data...")
+            from sklearn.model_selection import train_test_split
+            X_train_split, X_val_split, y_train_split, y_val_split = train_test_split(
+                X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+            )
+            X_train, y_train = X_train_split, y_train_split
+            X_val, y_val = X_val_split, y_val_split
+            print(f"   Train: {len(X_train):,} samples, Val: {len(X_val):,} samples")
         
-        # Stage 2: RF importance
-        sample_size = min(50000, len(X_filtered))
-        sample_idx = np.random.choice(len(X_filtered), sample_size, replace=False)
-        rf = RandomForestClassifier(n_estimators=50, max_depth=10, n_jobs=-1, random_state=42)
-        rf.fit(X_filtered[sample_idx], y_train[sample_idx])
-        print(f"   Stage 2: RF trained on {sample_size:,} samples")
+        # Initialize DeepSeek RL
+        self.deepseek_rl = DeepSeekRL(max_features=self.target_features)
         
-        # Stage 3: Select top
-        importances = rf.feature_importances_
-        top_idx = np.argsort(importances)[-self.target_features:]
-        self.selected_features_idx = np.sort(stat_features[top_idx])
+        # Train the RL agent
+        print("   Starting DeepSeek RL training...")
+        self.deepseek_rl.fit(X_train, y_train, X_val, y_val, episodes=episodes, verbose=True)
+        
+        # Get selected features
+        self.selected_features_idx = self.deepseek_rl.get_selected_features()
         
         elapsed = time.time() - start_time
-        print(f"   ✅ Complete: {elapsed:.1f}s ({elapsed/60:.2f} min)")
+        print(f"   DeepSeek RL Complete: {elapsed:.1f}s ({elapsed/60:.2f} min)")
+        print(f"   Selected {len(self.selected_features_idx)} features: {sorted(self.selected_features_idx)}")
         
-        return {'selected_features': self.selected_features_idx, 'time': elapsed}
+        return {
+            'selected_features': self.selected_features_idx, 
+            'time': elapsed,
+            'training_history': getattr(self.deepseek_rl, 'training_history', []),
+            'convergence_history': getattr(self.deepseek_rl, 'convergence_history', [])
+        }
     
     def transform(self, X):
+        if self.selected_features_idx is None:
+            raise ValueError("Must call fit() before transform()")
         return X[:, self.selected_features_idx]
     
     def get_selected_features(self):
@@ -81,7 +100,7 @@ class SCSIDTrainer:
     
     def __init__(self):
         self.device = torch.device(config.DEVICE)
-        print(f"🖥️  Device: {self.device}")
+        print(f"Device: {self.device}")
         if self.device.type == 'cuda':
             print(f"   GPU: {torch.cuda.get_device_name(0)}")
         
@@ -132,19 +151,51 @@ class SCSIDTrainer:
         return X_train, X_test, y_train, y_test, num_classes, class_names, feature_names
     
     def apply_feature_selection(self, X_train, X_test, y_train, y_test):
-        selector = FastFeatureSelector(config.SELECTED_FEATURES)
+        # Use DeepSeek RL for feature selection
+        selector = DeepSeekFeatureSelector(config.SELECTED_FEATURES)
+        
+        # Create train/validation split for DeepSeek RL training
         split = int(0.8 * len(X_train))
-        fs_history = selector.fit(X_train[:split], y_train[:split], X_train[split:], y_train[split:])
+        print(f"   DeepSeek RL train split: {split:,} train, {len(X_train)-split:,} validation")
+        
+        # Train DeepSeek RL (this will take significantly longer than FastFeatureSelector)
+        episodes = getattr(config, 'DEEPSEEK_RL_EPISODES', 100)  # Use config or default
+        print(f"   Training with {episodes} episodes")
+        fs_history = selector.fit(
+            X_train[:split], y_train[:split], 
+            X_train[split:], y_train[split:], 
+            episodes=episodes
+        )
         self.selected_features = selector.get_selected_features()
         
+        # Transform datasets using selected features
         X_train_sel = selector.transform(X_train)
         X_test_sel = selector.transform(X_test)
-        print(f"🔄 Transform: {X_train.shape} → {X_train_sel.shape}")
+        print(f"Transform: {X_train.shape} → {X_train_sel.shape}")
         
+        # Save results and plots
         os.makedirs(config.RESULTS_DIR, exist_ok=True)
-        with open(f"{config.RESULTS_DIR}/feature_selection_results.pkl", 'wb') as f:
+        deepseek_dir = f"{config.RESULTS_DIR}/deepseek_rl"
+        os.makedirs(deepseek_dir, exist_ok=True)
+        
+        # Save training plots if available
+        if hasattr(self.selected_features, 'training_history') and selector.deepseek_rl:
+            try:
+                selector.deepseek_rl.plot_training_history(f"{deepseek_dir}/training_history.png")
+                print(f"   Training plots saved to: {deepseek_dir}/")
+            except Exception as e:
+                print(f"   Could not save training plots: {e}")
+        
+        with open(f"{config.RESULTS_DIR}/deepseek_feature_selection_results.pkl", 'wb') as f:
             selected_features_list = self.selected_features.tolist() if self.selected_features is not None else []
-            pickle.dump({'selected_features': selected_features_list, 'history': fs_history}, f)
+            pickle.dump({
+                'selected_features': selected_features_list, 
+                'history': fs_history,
+                'method': 'DeepSeek_RL',
+                'episodes': episodes,
+                'target_features': config.SELECTED_FEATURES,
+                'deepseek_rl_object': selector.deepseek_rl  # Save the trained RL agent
+            }, f)
         
         return X_train_sel, X_test_sel, fs_history
     
@@ -158,7 +209,7 @@ class SCSIDTrainer:
         val_loader = DataLoader(val_ds, batch_size=config.BATCH_SIZE*2, shuffle=False, num_workers=0, pin_memory=pin)
         test_loader = DataLoader(test_ds, batch_size=config.BATCH_SIZE*2, shuffle=False, num_workers=0, pin_memory=pin)
         
-        print(f"✅ Loaders: Batch={config.BATCH_SIZE}, Train batches={len(train_loader)}")
+        print(f"Loaders: Batch={config.BATCH_SIZE}, Train batches={len(train_loader)}")
         return train_loader, val_loader, test_loader
     
     def train_epoch(self, model, loader, criterion, optimizer):
@@ -225,14 +276,20 @@ class SCSIDTrainer:
     
     def train_model(self):
         print("\n" + "="*70)
-        print("🚀 SCS-ID TRAINING - OPTIMIZED")
+        print("SCS-ID TRAINING WITH DEEPSEEK RL + STRUCTURED PRUNING + INT8 QUANTIZATION")
         print("="*70)
+        print("Using DeepSeek RL - Training will take 30-60+ minutes")
+        print("   This is the complete thesis implementation:")
+        print("   DeepSeek RL feature selection (78→42 features)")
+        print("   30% structured pruning (post-training)")
+        print("   INT8 quantization (~75% size reduction)")
+        print("   Threshold optimization (FPR < 1%)")
         
         # Load & select features
         X_train, X_test, y_train, y_test, num_classes, class_names, _ = self.load_processed_data()
         
         # Check label distribution (informational only - don't modify data)
-        print(f"\n🔍 LABEL DISTRIBUTION ANALYSIS")
+        print(f"\nLABEL DISTRIBUTION ANALYSIS")
         train_classes = set(np.unique(y_train))
         test_classes = set(np.unique(y_test))
         all_classes = set(range(num_classes))
@@ -282,12 +339,14 @@ class SCSIDTrainer:
         print("   ✅ All labels are in valid range for the model")
         
         # Model - Use num_classes from preprocessed data (same as baseline)
-        print("\n🧠 MODEL")
+        print("\nMODEL")
         print(f"   Using {num_classes} classes (from preprocessed metadata)")
         print(f"   Config NUM_CLASSES={config.NUM_CLASSES} (ignored for consistency)")
-        self.model = create_scs_id_model(config.SELECTED_FEATURES, num_classes, True, config.PRUNING_RATIO).to(self.device)
+        # Create model WITHOUT pruning first - pruning will be applied post-training
+        self.model = create_scs_id_model(config.SELECTED_FEATURES, num_classes, False, 0.0).to(self.device)
         total_params, _ = self.model.count_parameters()
-        print(f"✅ Parameters: {total_params:,}")
+        print(f"Parameters: {total_params:,}")
+        print("   (Pruning will be applied post-training for optimal performance)")
         
         # Training
         criterion = nn.CrossEntropyLoss()
@@ -328,8 +387,66 @@ class SCSIDTrainer:
         
         training_time = time.time() - start_time
         
-        # Evaluate
+        # Load best model
         self.model.load_state_dict(torch.load(f"{config.RESULTS_DIR}/scs_id_best_model.pth"))
+        
+        # Apply 30% structured pruning post-training (thesis requirement)
+        print("\n" + "="*70)
+        print("POST-TRAINING STRUCTURED PRUNING")
+        print("="*70)
+        print("Applying 30% structured pruning to the trained model...")
+        print("This removes entire filters/channels while preserving model structure.")
+        
+        # Get parameters before pruning
+        params_before, _ = self.model.count_parameters()
+        
+        # Apply structured pruning
+        self.model = apply_structured_pruning(self.model, config.PRUNING_RATIO)
+        
+        # Get parameters after pruning
+        params_after, _ = self.model.count_parameters()
+        actual_reduction = (params_before - params_after) / params_before * 100
+        
+        print(f"Pruning Results:")
+        print(f"   Before: {params_before:,} parameters")
+        print(f"   After:  {params_after:,} parameters")
+        print(f"   Reduction: {actual_reduction:.1f}% (Target: {config.PRUNING_RATIO*100:.1f}%)")
+        
+        # Save pruned model
+        torch.save(self.model.state_dict(), f"{config.RESULTS_DIR}/scs_id_pruned_model.pth")
+        print(f"Pruned model saved to: {config.RESULTS_DIR}/scs_id_pruned_model.pth")
+        
+        # Apply INT8 quantization for additional compression
+        print("\n" + "="*70)
+        print("INT8 QUANTIZATION")
+        print("="*70)
+        print("Applying INT8 quantization for ~75% additional size reduction...")
+        print("This converts FP32 weights to INT8 for efficient inference.")
+        
+        # Get model size before quantization
+        from models.scs_id import get_model_size_mb
+        size_before_quant = get_model_size_mb(self.model)
+        
+        # Apply quantization (creates a new quantized model)
+        quantized_model = apply_quantization(self.model)
+        
+        # Get size after quantization
+        size_after_quant = get_model_size_mb(quantized_model)
+        quant_reduction = (size_before_quant - size_after_quant) / size_before_quant * 100
+        
+        print("Quantization Results:")
+        print(f"   Before: {size_before_quant:.2f} MB")
+        print(f"   After:  {size_after_quant:.2f} MB")
+        print(f"   Reduction: {quant_reduction:.1f}%")
+        
+        # Save quantized model
+        torch.save(quantized_model.state_dict(), f"{config.RESULTS_DIR}/scs_id_quantized_model.pth")
+        print(f"Quantized model saved to: {config.RESULTS_DIR}/scs_id_quantized_model.pth")
+        
+        # Update self.model to quantized version for evaluation
+        self.model = quantized_model
+        
+        # Evaluate quantized model
         test_acc, test_f1, precision, recall, y_true, y_pred = self.evaluate_model(self.model, test_loader)
 
         print("\n" + "="*70)
@@ -417,6 +534,11 @@ class SCSIDTrainer:
         from sklearn.metrics import classification_report
         clf_report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
         
+        # Calculate total compression from original model
+        original_size = get_model_size_mb(create_scs_id_model(config.SELECTED_FEATURES, num_classes, False, 0.0))
+        final_size = get_model_size_mb(self.model)
+        total_compression = (original_size - final_size) / original_size * 100
+        
         # Save complete results matching baseline format
         results = {
             'test_accuracy': test_acc,
@@ -429,13 +551,22 @@ class SCSIDTrainer:
             'predictions': y_pred,  # Keep as numpy array
             'labels': y_true,       # Keep as numpy array
             'classification_report': clf_report,
-            'total_parameters': total_params,  # Match baseline field name
+            'total_parameters_before_pruning': params_before,  # Original parameters
+            'total_parameters_after_pruning': params_after,   # Pruned parameters
+            'pruning_reduction_percentage': actual_reduction,
+            'model_size_before_quantization_mb': size_before_quant,
+            'model_size_after_quantization_mb': final_size,
+            'quantization_reduction_percentage': quant_reduction,
+            'total_compression_percentage': total_compression,
             'class_names': class_names,
             'config': {
                 'batch_size': config.BATCH_SIZE,
                 'learning_rate': config.LEARNING_RATE,
                 'epochs': config.EPOCHS,
-                'model': 'SCS-ID'
+                'model': 'SCS-ID',
+                'pruning_ratio': config.PRUNING_RATIO,
+                'structured_pruning': True,
+                'int8_quantization': True
             }
         }
         
@@ -463,7 +594,10 @@ class SCSIDTrainer:
         with open(f"{config.RESULTS_DIR}/scs_id_results.pkl", 'wb') as f:
             pickle.dump(results, f)
         
-        print(f"\n🎉 COMPLETE: {training_time/60:.1f} min, Acc={test_acc*100:.2f}%, F1={test_f1:.4f}")
+        print(f"\nCOMPLETE: {training_time/60:.1f} min, Acc={test_acc*100:.2f}%, F1={test_f1:.4f}")
+        print(f"Final Model: {params_after:,} parameters ({actual_reduction:.1f}% pruning + {quant_reduction:.1f}% quantization)")
+        print(f"Total Compression: {total_compression:.1f}% (Original: {original_size:.2f}MB -> Final: {final_size:.2f}MB)")
+        print(f"SCS-ID with DeepSeek RL + Structured Pruning + INT8 Quantization: {'SUCCESS' if test_acc >= 0.99 else 'Below 99%'}")
         return self.model, test_acc, test_f1
 
 

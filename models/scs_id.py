@@ -460,9 +460,9 @@ def apply_structured_pruning(model: SCSIDModel, pruning_ratio: float = 0.3) -> S
     """
     Apply structured pruning to reduce model parameters by 30% (thesis requirement)
     
-    Uses L1-norm based filter pruning which removes entire filters/channels
-    rather than individual weights. This is more hardware-friendly than
-    unstructured pruning.
+    Uses structured channel-wise pruning which removes entire filters/channels
+    based on L1-norm, which is more hardware-friendly than unstructured pruning.
+    This maintains the original network structure while reducing parameters.
     
     Args:
         model: SCS-ID model instance
@@ -476,36 +476,88 @@ def apply_structured_pruning(model: SCSIDModel, pruning_ratio: float = 0.3) -> S
     try:
         import torch.nn.utils.prune as prune
         
-        # Get all conv and linear layers for pruning
-        modules_to_prune = []
+        # Get all conv and linear layers for structured pruning
+        conv_modules = []
+        linear_modules = []
+        
         for name, module in model.named_modules():
-            if isinstance(module, (nn.Conv1d, nn.Conv2d, nn.Linear)):
-                modules_to_prune.append((module, 'weight'))
+            if isinstance(module, (nn.Conv1d, nn.Conv2d)):
+                conv_modules.append((name, module))
+            elif isinstance(module, nn.Linear):
+                linear_modules.append((name, module))
         
-        print(f"   Found {len(modules_to_prune)} layers to prune")
+        print(f"   Found {len(conv_modules)} conv layers and {len(linear_modules)} linear layers to prune")
         
-        # Apply L1 unstructured pruning globally
-        # (removes weights with smallest L1 norm across all layers)
-        prune.global_unstructured(
-            modules_to_prune,
-            pruning_method=prune.L1Unstructured,
-            amount=pruning_ratio,
-        )
+        # Apply structured pruning to convolutional layers (prune entire filters)
+        for name, module in conv_modules:
+            # Calculate number of filters to prune
+            num_filters = module.out_channels
+            filters_to_prune = int(num_filters * pruning_ratio)
+            
+            if filters_to_prune > 0:
+                # Use structured pruning - removes entire filters based on L1 norm
+                prune.ln_structured(
+                    module, 
+                    name='weight', 
+                    amount=filters_to_prune, 
+                    n=1,  # L1 norm
+                    dim=0  # Prune along output channel dimension
+                )
+                print(f"   {name}: Pruned {filters_to_prune}/{num_filters} filters")
         
-        # Remove pruning re-parametrization to make it permanent
-        for module, param in modules_to_prune:
-            prune.remove(module, param)
+        # Apply structured pruning to linear layers (prune entire neurons)
+        for name, module in linear_modules:
+            # Calculate number of neurons to prune
+            num_neurons = module.out_features
+            neurons_to_prune = int(num_neurons * pruning_ratio)
+            
+            if neurons_to_prune > 0:
+                # Use structured pruning - removes entire neurons based on L1 norm
+                prune.ln_structured(
+                    module, 
+                    name='weight', 
+                    amount=neurons_to_prune, 
+                    n=1,  # L1 norm
+                    dim=0  # Prune along output dimension
+                )
+                print(f"   {name}: Pruned {neurons_to_prune}/{num_neurons} neurons")
+        
+        # Make pruning permanent by removing the re-parametrization
+        for name, module in conv_modules + linear_modules:
+            if hasattr(module, 'weight_mask'):
+                prune.remove(module, 'weight')
         
         # Count remaining parameters
         total_params, trainable_params = model.count_parameters()
-        print(f"   ✅ Pruning complete")
+        print(f"   ✅ Structured pruning complete")
         print(f"   Remaining parameters: {trainable_params:,}")
         print(f"   Pruning ratio achieved: {pruning_ratio*100:.1f}%")
         
     except ImportError:
         print("   ⚠️ PyTorch pruning not available. Skipping pruning.")
     except Exception as e:
-        print(f"   ⚠️ Pruning failed: {e}")
+        print(f"   ⚠️ Structured pruning failed: {e}")
+        print("   Falling back to unstructured pruning...")
+        
+        # Fallback to unstructured pruning
+        try:
+            modules_to_prune = []
+            for name, module in model.named_modules():
+                if isinstance(module, (nn.Conv1d, nn.Conv2d, nn.Linear)):
+                    modules_to_prune.append((module, 'weight'))
+            
+            prune.global_unstructured(
+                modules_to_prune,
+                pruning_method=prune.L1Unstructured,
+                amount=pruning_ratio,
+            )
+            
+            for module, param in modules_to_prune:
+                prune.remove(module, param)
+            
+            print(f"   ✅ Fallback unstructured pruning complete")
+        except Exception as e2:
+            print(f"   ❌ Both structured and unstructured pruning failed: {e2}")
     
     return model
 
@@ -523,7 +575,7 @@ def apply_quantization(model: SCSIDModel) -> nn.Module:
     Returns:
         Quantized model
     """
-    print("\n🔧 Applying INT8 quantization...")
+    print("\nApplying INT8 quantization...")
     
     try:
         # Prepare model for quantization (must be in eval mode)
@@ -536,13 +588,13 @@ def apply_quantization(model: SCSIDModel) -> nn.Module:
             dtype=torch.qint8
         )
         
-        print("   ✅ Quantization complete")
+        print("   Quantization complete")
         print("   Model size reduced by ~75%")
         
         return model_quantized
         
     except Exception as e:
-        print(f"   ⚠️ Quantization failed: {e}")
+        print(f"   WARNING: Quantization failed: {e}")
         print("   Returning unquantized model")
         return model
 
