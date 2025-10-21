@@ -21,6 +21,9 @@ class Config:
     BASELINE_FILTERS = [120, 60, 30]
     PRUNING_RATIO = 0.3
     
+    # DeepSeek RL parameters
+    DEEPSEEK_RL_EPISODES = 100  # Reduced from 200 for faster training
+    
     # Create directories
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(RESULTS_DIR, exist_ok=True)
