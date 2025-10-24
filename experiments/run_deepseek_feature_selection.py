@@ -30,31 +30,31 @@ import seaborn as sns
 
 def load_preprocessed_data(data_path='data/processed'):
     """
-    Load preprocessed CIC-IDS2017 dataset
-    
+    Load preprocessed CIC-IDS2017 dataset from a .pkl file
+
     Returns:
         X_train, X_val, X_test, y_train, y_val, y_test, feature_names
     """
     print("="*70)
     print("📂 Loading Preprocessed Data")
     print("="*70)
-    
+
     try:
-        # Load preprocessed data
-        X_train = np.load(f'{data_path}/X_train.npy')
-        X_val = np.load(f'{data_path}/X_val.npy')
-        X_test = np.load(f'{data_path}/X_test.npy')
-        y_train = np.load(f'{data_path}/y_train.npy')
-        y_val = np.load(f'{data_path}/y_val.npy')
-        y_test = np.load(f'{data_path}/y_test.npy')
-        
-        # Load feature names if available
-        try:
-            with open(f'{data_path}/feature_names.pkl', 'rb') as f:
-                feature_names = pickle.load(f)
-        except:
-            feature_names = [f'feature_{i}' for i in range(X_train.shape[1])]
-        
+        # Load preprocessed data from the .pkl file
+        with open(f'{data_path}/processed_data.pkl', 'rb') as f:
+            data = pickle.load(f)
+
+        X_train = data['X_train']
+        X_test = data['X_test']
+        y_train = data['y_train']
+        y_test = data['y_test']
+        feature_names = data['feature_names']
+
+        # Split validation set from training data
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train, y_train, test_size=0.2, random_state=42, stratify=y_train
+        )
+
         print(f"✅ Data loaded successfully!")
         print(f"   Training samples: {len(X_train)}")
         print(f"   Validation samples: {len(X_val)}")
@@ -62,9 +62,9 @@ def load_preprocessed_data(data_path='data/processed'):
         print(f"   Features: {X_train.shape[1]}")
         print(f"   Classes: {len(np.unique(y_train))}")
         print("="*70 + "\n")
-        
+
         return X_train, X_val, X_test, y_train, y_val, y_test, feature_names
-        
+
     except FileNotFoundError:
         print("⚠️  Preprocessed data not found!")
         print("   Please run data preprocessing first:")
