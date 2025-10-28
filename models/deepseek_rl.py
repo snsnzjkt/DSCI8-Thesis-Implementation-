@@ -90,18 +90,39 @@ class FeatureSelectionEnvironment:
             return 0.0, 1.0
         
         try:
-            selected_idx = np.where(self.current_features)[0]
-            X_train_selected = self.X_train[:, selected_idx]
-            X_val_selected = self.X_val[:, selected_idx]
+            # Convert current_features to CPU if it's a tensor
+            if isinstance(self.current_features, torch.Tensor):
+                current_features = self.current_features.cpu().numpy()
+            else:
+                current_features = self.current_features
+                
+            selected_idx = np.where(current_features)[0]
+            
+            # Handle training data
+            if isinstance(self.X_train, torch.Tensor):
+                X_train_selected = self.X_train[:, selected_idx].detach().cpu().numpy()
+            else:
+                X_train_selected = self.X_train[:, selected_idx]
+                
+            # Handle validation data
+            if isinstance(self.X_val, torch.Tensor):
+                X_val_selected = self.X_val[:, selected_idx].detach().cpu().numpy()
+            else:
+                X_val_selected = self.X_val[:, selected_idx]
+                
+            # Convert labels if they are tensors
+            if isinstance(self.y_train, torch.Tensor):
+                y_train = self.y_train.cpu().numpy()
+            else:
+                y_train = self.y_train
+                
+            if isinstance(self.y_val, torch.Tensor):
+                y_val = self.y_val.cpu().numpy()
+            else:
+                y_val = self.y_val
             
             # Debugging log to track repeated calls
             print("Evaluating features...")
-
-            # Ensure tensors are moved to CPU before converting to NumPy
-            if isinstance(X_train_selected, torch.Tensor):
-                X_train_selected = X_train_selected.detach().cpu().numpy()
-            if isinstance(X_val_selected, torch.Tensor):
-                X_val_selected = X_val_selected.detach().cpu().numpy()
             
             # Quick evaluation with Random Forest
             rf = RandomForestClassifier(
@@ -111,14 +132,14 @@ class FeatureSelectionEnvironment:
                 n_jobs=-1
             )
             
-            rf.fit(X_train_selected, self.y_train)
+            rf.fit(X_train_selected, y_train)
             y_pred = rf.predict(X_val_selected)
             
             # Calculate metrics
-            f1 = f1_score(self.y_val, y_pred, average='weighted')
+            f1 = f1_score(y_val, y_pred, average='weighted')
             
             # Calculate false positive rate
-            cm = confusion_matrix(self.y_val, y_pred)
+            cm = confusion_matrix(y_val, y_pred)
             # FP rate = FP / (FP + TN)
             fp = cm.sum(axis=0) - np.diag(cm)
             tn = cm.sum() - (cm.sum(axis=1) + cm.sum(axis=0) - np.diag(cm))
