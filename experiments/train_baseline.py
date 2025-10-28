@@ -11,6 +11,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import pickle
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, f1_score
 import seaborn as sns
@@ -153,12 +154,24 @@ class BaselineTrainer:
         
         with open(processed_file, 'rb') as f:
             data = pickle.load(f)
-        
-        # Extract data
-        X_train = torch.FloatTensor(data['X_train'])
-        X_test = torch.FloatTensor(data['X_test'])
-        y_train = torch.LongTensor(data['y_train'])
-        y_test = torch.LongTensor(data['y_test'])
+
+        # Extract data and convert pandas DataFrames/Series to numpy arrays if needed
+        X_train_raw = data['X_train']
+        X_test_raw = data['X_test']
+        y_train_raw = data['y_train']
+        y_test_raw = data['y_test']
+
+        # Handle pandas objects (DataFrame / Series) or numpy arrays
+        X_train_arr = X_train_raw.values if hasattr(X_train_raw, 'values') else np.asarray(X_train_raw)
+        X_test_arr = X_test_raw.values if hasattr(X_test_raw, 'values') else np.asarray(X_test_raw)
+        y_train_arr = y_train_raw.values if hasattr(y_train_raw, 'values') else np.asarray(y_train_raw)
+        y_test_arr = y_test_raw.values if hasattr(y_test_raw, 'values') else np.asarray(y_test_raw)
+
+        # Ensure correct dtypes and shapes
+        X_train = torch.FloatTensor(np.asarray(X_train_arr, dtype=np.float32))
+        X_test = torch.FloatTensor(np.asarray(X_test_arr, dtype=np.float32))
+        y_train = torch.LongTensor(np.asarray(y_train_arr).ravel().astype(np.int64))
+        y_test = torch.LongTensor(np.asarray(y_test_arr).ravel().astype(np.int64))
         
         # Get metadata
         num_classes = data['num_classes']
