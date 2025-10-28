@@ -89,9 +89,14 @@ class FastSCSIDTrainer:
     
     def create_data_loaders(self, X_train, X_val, X_test, y_train, y_val, y_test):
         """Create PyTorch data loaders"""
-        train_ds = TensorDataset(torch.FloatTensor(X_train), torch.LongTensor(y_train))
-        val_ds = TensorDataset(torch.FloatTensor(X_val), torch.LongTensor(y_val))
-        test_ds = TensorDataset(torch.FloatTensor(X_test), torch.LongTensor(y_test))
+        # Convert DataFrames to numpy arrays if needed
+        X_train_arr = X_train.values if hasattr(X_train, 'values') else X_train
+        X_val_arr = X_val.values if hasattr(X_val, 'values') else X_val
+        X_test_arr = X_test.values if hasattr(X_test, 'values') else X_test
+        
+        train_ds = TensorDataset(torch.FloatTensor(X_train_arr), torch.LongTensor(y_train))
+        val_ds = TensorDataset(torch.FloatTensor(X_val_arr), torch.LongTensor(y_val))
+        test_ds = TensorDataset(torch.FloatTensor(X_test_arr), torch.LongTensor(y_test))
         
         pin = self.device.type == 'cuda'
         train_loader = DataLoader(train_ds, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=pin)
@@ -152,7 +157,9 @@ class FastSCSIDTrainer:
         
         with torch.no_grad():
             for data, target in loader:
-                data, target = data.to(self.device, non_blocking=True), target.to(self.device, non_blocking=True)
+                # Handle both CPU and GPU cases
+                if self.device.type == 'cuda' and not isinstance(model, torch.ao.quantization.quantize_dynamic.QuantizedModel):
+                    data, target = data.to(self.device, non_blocking=True), target.to(self.device, non_blocking=True)
                 data = data.unsqueeze(1).unsqueeze(-1)
                 output = model(data)
                 pred = output.argmax(dim=1)
@@ -284,6 +291,13 @@ class FastSCSIDTrainer:
         torch.save(quantized_model.state_dict(), f"{config.RESULTS_DIR}/scs_id_quantized_model_fast.pth")
         self.model = quantized_model
         
+        # Move model to CPU for quantized evaluation
+        self.model = self.model.cpu()
+        for batch in test_loader:
+            batch = [x.cpu() for x in batch]  # Move test data to CPU
+            test_loader = [(batch[0], batch[1])]
+            break  # Only need one batch for testing quantization
+
         # Final evaluation
         print(f"\nFINAL EVALUATION")
         test_acc, test_f1, precision, recall, y_true, y_pred = self.evaluate_model(self.model, test_loader)
