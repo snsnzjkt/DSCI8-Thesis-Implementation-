@@ -96,6 +96,28 @@ def run_deepseek_feature_selection():
     print(f"\n🚀 Starting DeepSeek RL training with {episodes} episodes...")
     print("   This will take less time due to reduced episodes")
     
+    # Check if PyTorch is using the GPU
+    import torch
+    print(f"PyTorch CUDA Available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"Current Device: {torch.cuda.current_device()}")
+        print(f"Device Name: {torch.cuda.get_device_name(0)}")
+
+    # Move DeepSeekRL to GPU
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    deepseek_rl.to(device)
+
+    # Move data to GPU
+    X_train_rl = torch.tensor(X_train_rl).to(device)
+    y_train_rl = torch.tensor(y_train_rl).to(device)
+    X_val_rl = torch.tensor(X_val_rl).to(device)
+    y_val_rl = torch.tensor(y_val_rl).to(device)
+
+    # Add GPU memory usage logging during training
+    print("Monitoring GPU memory usage during training...")
+    print(f"GPU Memory Allocated: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+    print(f"GPU Memory Reserved: {torch.cuda.memory_reserved() / 1e6:.2f} MB")
+    
     start_time = time.time()
     deepseek_rl.fit(
         X_train_rl, y_train_rl, 
