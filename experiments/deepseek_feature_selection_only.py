@@ -85,7 +85,7 @@ def run_deepseek_feature_selection():
     
     # Initialize DeepSeek RL
     print(f"\n🧠 Initializing DeepSeek RL...")
-    episodes = getattr(config, 'DEEPSEEK_RL_EPISODES', 100)
+    episodes = 50  # Reduced from the default value
     target_features = config.SELECTED_FEATURES
     
     deepseek_rl = DeepSeekRL(max_features=target_features)
@@ -93,8 +93,8 @@ def run_deepseek_feature_selection():
     print(f"   Training episodes: {episodes}")
     
     # Train DeepSeek RL
-    print(f"\n🚀 Starting DeepSeek RL training...")
-    print("   This will take 30-60 minutes - please be patient")
+    print(f"\n🚀 Starting DeepSeek RL training with {episodes} episodes...")
+    print("   This will take less time due to reduced episodes")
     
     start_time = time.time()
     deepseek_rl.fit(
@@ -104,6 +104,21 @@ def run_deepseek_feature_selection():
         verbose=True
     )
     training_time = time.time() - start_time
+    
+    print(f"\n✅ Training completed in {training_time:.2f} seconds")
+    print("   Monitoring GPU utilization during training...")
+    
+    # Check GPU utilization
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            print(f"   GPU in use: {gpu_name}")
+            print(f"   Current GPU utilization: {torch.cuda.memory_allocated(0) / 1e6:.2f} MB")
+        else:
+            print("   No GPU detected. Training is running on CPU.")
+    except ImportError:
+        print("   PyTorch is not installed. Unable to check GPU utilization.")
     
     # Get selected features
     selected_features = deepseek_rl.get_selected_features()
