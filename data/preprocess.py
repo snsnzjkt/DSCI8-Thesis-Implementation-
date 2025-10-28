@@ -147,18 +147,49 @@ class CICIDSPreprocessor:
         # Combine all data
         print("\nCombining all processed files...")
         combined_df = pd.concat(all_data, axis=0, ignore_index=True)
+        num_features = len(combined_df.columns) - 1  # -1 for Label column
         print(f"Total samples: {len(combined_df):,}")
-        print(f"Features: {len(combined_df.columns)-1}")  # -1 for Label column
+        print(f"Features: {num_features}")
+        
+        if num_features != config.NUM_FEATURES:
+            raise ValueError(f"ERROR: Got {num_features} features after preprocessing, expected {config.NUM_FEATURES}. "
+                           f"Some features may have been incorrectly removed.")
+
+        # Split features and labels (note the space in ' Label')
+        X = combined_df.drop(' Label', axis=1)
+        y = combined_df[' Label']
+
+        # Strip whitespace from column names
+        X.columns = X.columns.str.strip()
+
+        # Convert labels to numeric
+        self.label_encoder.fit(y)
+        y = self.label_encoder.transform(y)
+
+        # Split into train/test sets
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=42, stratify=y
+        )
 
         # Save combined processed data
         output_file = self.processed_dir / "processed_data.pkl"
         with open(output_file, 'wb') as f:
             pickle.dump({
-                'data': combined_df,
+                'X_train': X_train,
+                'X_test': X_test,
+                'y_train': y_train,
+                'y_test': y_test,
+                'num_classes': len(np.unique(y)),
+                'class_names': self.all_attack_types,
+                'feature_names': list(X.columns),
                 'num_features': results['num_features'],
                 'num_samples': len(combined_df)
             }, f)
         print(f"\n✓ Saved processed data to {output_file}")
+        print(f"   Train samples: {len(X_train):,}")
+        print(f"   Test samples: {len(X_test):,}")
+        print(f"   Features: {X_train.shape[1]}")
+        print(f"   Classes: {len(np.unique(y))}")
         
         return results
     
@@ -235,15 +266,44 @@ class CICIDSPreprocessor:
         if nan_filled > 0:
             print(f"   Filled {nan_filled:,} NaN values with median/zero")
         
-        # Remove constant columns (they don't provide information and can cause issues)
-        constant_cols = []
-        for col in numeric_cols:
-            if col in df.columns and df[col].nunique() <= 1:
-                constant_cols.append(col)
+        # Preserve all original features, even if they appear constant
+        # This is important for maintaining the 78 features as per thesis requirements
+        preserved_features = [
+            'Destination Port', 'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
+            'Total Length of Fwd Packets', 'Total Length of Bwd Packets', 'Fwd Packet Length Max',
+            'Fwd Packet Length Min', 'Fwd Packet Length Mean', 'Fwd Packet Length Std',
+            'Bwd Packet Length Max', 'Bwd Packet Length Min', 'Bwd Packet Length Mean',
+            'Bwd Packet Length Std', 'Flow Bytes/s', 'Flow Packets/s', 'Flow IAT Mean',
+            'Flow IAT Std', 'Flow IAT Max', 'Flow IAT Min', 'Fwd IAT Total', 'Fwd IAT Mean',
+            'Fwd IAT Std', 'Fwd IAT Max', 'Fwd IAT Min', 'Bwd IAT Total', 'Bwd IAT Mean',
+            'Bwd IAT Std', 'Bwd IAT Max', 'Bwd IAT Min', 'Fwd PSH Flags', 'Bwd PSH Flags',
+            'Fwd URG Flags', 'Bwd URG Flags', 'Fwd Header Length', 'Bwd Header Length',
+            'Fwd Packets/s', 'Bwd Packets/s', 'Min Packet Length', 'Max Packet Length',
+            'Packet Length Mean', 'Packet Length Std', 'Packet Length Variance', 'FIN Flag Count',
+            'SYN Flag Count', 'RST Flag Count', 'PSH Flag Count', 'ACK Flag Count',
+            'URG Flag Count', 'CWE Flag Count', 'ECE Flag Count', 'Down/Up Ratio',
+            'Average Packet Size', 'Avg Fwd Segment Size', 'Avg Bwd Segment Size',
+            'Fwd Header Length.1', 'Fwd Avg Bytes/Bulk', 'Fwd Avg Packets/Bulk',
+            'Fwd Avg Bulk Rate', 'Bwd Avg Bytes/Bulk', 'Bwd Avg Packets/Bulk',
+            'Bwd Avg Bulk Rate', 'Subflow Fwd Packets', 'Subflow Fwd Bytes',
+            'Subflow Bwd Packets', 'Subflow Bwd Bytes', 'Init_Win_bytes_forward',
+            'Init_Win_bytes_backward', 'act_data_pkt_fwd', 'min_seg_size_forward',
+            'Active Mean', 'Active Std', 'Active Max', 'Active Min', 'Idle Mean',
+            'Idle Std', 'Idle Max', 'Idle Min'
+        ]
         
-        if constant_cols:
-            print(f"   Removing {len(constant_cols)} constant columns")
-            df = df.drop(columns=constant_cols)
+        # Instead of removing columns, ensure all required features exist
+        for feature in preserved_features:
+            if feature not in df.columns and f" {feature}" not in df.columns:
+                print(f"⚠️  Warning: Missing required feature: {feature}")
+                # If missing, add it with zeros (better than dropping features)
+                df[feature] = 0
+                
+        # Remove any extra columns that aren't in our preserved list or Label
+        extra_cols = [col for col in df.columns if col.strip() not in preserved_features and col.strip() != 'Label']
+        if extra_cols:
+            print(f"   Removing {len(extra_cols)} extra columns: {extra_cols}")
+            df = df.drop(columns=extra_cols)
         
         final_rows = len(df)
         final_cols = len(df.columns)

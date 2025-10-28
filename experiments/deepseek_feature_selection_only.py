@@ -107,11 +107,11 @@ def run_deepseek_feature_selection():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     deepseek_rl.to(device)
 
-    # Move data to GPU
-    X_train_rl = torch.tensor(X_train_rl).to(device)
-    y_train_rl = torch.tensor(y_train_rl).to(device)
-    X_val_rl = torch.tensor(X_val_rl).to(device)
-    y_val_rl = torch.tensor(y_val_rl).to(device)
+    # Convert DataFrames to numpy arrays and then to tensors
+    X_train_rl = torch.tensor(X_train_rl.values, dtype=torch.float32).to(device)
+    y_train_rl = torch.tensor(y_train_rl, dtype=torch.long).to(device)
+    X_val_rl = torch.tensor(X_val_rl.values, dtype=torch.float32).to(device)
+    y_val_rl = torch.tensor(y_val_rl, dtype=torch.long).to(device)
 
     # Add GPU memory usage logging during training
     print("Monitoring GPU memory usage during training...")

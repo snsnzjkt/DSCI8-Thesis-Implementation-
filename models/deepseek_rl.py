@@ -51,6 +51,10 @@ class FeatureSelectionEnvironment:
         # Episode tracking
         self.episode_count = 0
         
+        # Evaluation caching and monitoring
+        self.eval_cache = {}  # Cache for feature evaluation results
+        self.eval_count = 0   # Counter for feature evaluations
+        
         print(f"🌍 Environment initialized:")
         print(f"   📊 Total features: {self.total_features}")
         print(f"   🎯 Target features: {self.max_features}")
@@ -83,7 +87,7 @@ class FeatureSelectionEnvironment:
     
     def _evaluate_features(self):
         """
-        Evaluate current feature selection
+        Evaluate current feature selection with caching
         Returns: f1_score, false_positive_rate
         """
         if self.selected_count == 0:
@@ -95,6 +99,18 @@ class FeatureSelectionEnvironment:
                 current_features = self.current_features.cpu().numpy()
             else:
                 current_features = self.current_features
+            
+            # Create cache key from selected features
+            cache_key = tuple(np.where(current_features)[0])
+            
+            # Check cache first
+            if cache_key in self.eval_cache:
+                return self.eval_cache[cache_key]
+            
+            # Increment evaluation counter
+            self.eval_count += 1
+            if self.eval_count % 100 == 0:
+                print(f"Total feature evaluations: {self.eval_count}")
                 
             selected_idx = np.where(current_features)[0]
             
@@ -145,6 +161,8 @@ class FeatureSelectionEnvironment:
             tn = cm.sum() - (cm.sum(axis=1) + cm.sum(axis=0) - np.diag(cm))
             fp_rate = fp.sum() / (fp.sum() + tn.sum() + 1e-10)
             
+            # Cache the results
+            self.eval_cache[cache_key] = (f1, fp_rate)
             return f1, fp_rate
             
         except Exception as e:
