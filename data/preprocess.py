@@ -88,6 +88,80 @@ class CICIDSPreprocessor:
             'Bot', 'PortScan', 'Heartbleed'
         ]
     
+    def process_all_files(self, force_reprocess=False, validate_features=True):
+        """
+        Process all CSV files in the raw data directory
+        Args:
+            force_reprocess (bool): If True, reprocess even if files exist
+            validate_features (bool): If True, validate feature count
+        Returns:
+            dict: Processing results including feature count
+        """
+        print("\nProcessing CIC-IDS2017 dataset files...")
+        results = {
+            'num_features': 0,
+            'files_processed': 0,
+            'total_samples': 0
+        }
+
+        # Clear processed directory if force_reprocess
+        if force_reprocess:
+            print("Clearing processed directory...")
+            for file in self.processed_dir.glob("*.pkl"):
+                file.unlink()
+            for file in self.processed_dir.glob("*.csv"):
+                file.unlink()
+
+        # Get list of all raw CSV files
+        raw_files = list(self.raw_dir.glob("*.csv"))
+        if not raw_files:
+            raise FileNotFoundError(f"No CSV files found in {self.raw_dir}")
+
+        # Process each file
+        all_data = []
+        for file_path in raw_files:
+            print(f"\nProcessing {file_path.name}...")
+            
+            # Read CSV
+            df = pd.read_csv(file_path)
+            initial_cols = len(df.columns)
+            
+            if validate_features:
+                # -1 because one column is the Label
+                num_features = initial_cols - 1
+                if num_features != config.NUM_FEATURES:
+                    print(f"⚠️  Warning: Found {num_features} features (expected {config.NUM_FEATURES})")
+                    print("Features:", list(df.columns))
+                results['num_features'] = num_features
+            
+            # Handle problematic values
+            df = self.handle_infinite_values(df)
+            
+            # Add to combined dataset
+            all_data.append(df)
+            results['files_processed'] += 1
+            results['total_samples'] += len(df)
+            
+            print(f"✓ Processed {len(df):,} samples")
+
+        # Combine all data
+        print("\nCombining all processed files...")
+        combined_df = pd.concat(all_data, axis=0, ignore_index=True)
+        print(f"Total samples: {len(combined_df):,}")
+        print(f"Features: {len(combined_df.columns)-1}")  # -1 for Label column
+
+        # Save combined processed data
+        output_file = self.processed_dir / "processed_data.pkl"
+        with open(output_file, 'wb') as f:
+            pickle.dump({
+                'data': combined_df,
+                'num_features': results['num_features'],
+                'num_samples': len(combined_df)
+            }, f)
+        print(f"\n✓ Saved processed data to {output_file}")
+        
+        return results
+    
     def handle_infinite_values(self, df):
         """Handle infinite and problematic values in the dataset"""
         print("🔧 Handling infinite and extreme values...")
