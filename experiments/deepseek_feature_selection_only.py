@@ -23,7 +23,7 @@ import time
 import os
 from sklearn.model_selection import train_test_split
 from config import config
-from models.deepseek_rl import DeepSeekRL
+from models.deepseek_rl_optimized import OptimizedDeepSeekRL as DeepSeekRL
 
 
 def load_processed_data():
@@ -103,15 +103,15 @@ def run_deepseek_feature_selection():
         print(f"Current Device: {torch.cuda.current_device()}")
         print(f"Device Name: {torch.cuda.get_device_name(0)}")
 
-    # Move DeepSeekRL to GPU
+    # Set up device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    deepseek_rl.to(device)
-
-    # Convert DataFrames to numpy arrays and then to tensors
-    X_train_rl = torch.tensor(X_train_rl.values, dtype=torch.float32).to(device)
-    y_train_rl = torch.tensor(y_train_rl, dtype=torch.long).to(device)
-    X_val_rl = torch.tensor(X_val_rl.values, dtype=torch.float32).to(device)
-    y_val_rl = torch.tensor(y_val_rl, dtype=torch.long).to(device)
+    
+    # Convert DataFrames to numpy arrays
+    X_train_rl = X_train_rl.values
+    X_val_rl = X_val_rl.values
+    
+    # Initialize DeepSeekRL
+    deepseek_rl = DeepSeekRL(max_features=target_features)
 
     # Add GPU memory usage logging during training
     print("Monitoring GPU memory usage during training...")
@@ -152,8 +152,12 @@ def run_deepseek_feature_selection():
     
     # Transform all datasets with selected features
     print(f"\n🔄 Transforming datasets with selected features...")
-    X_train_selected = X_train[:, selected_features]
-    X_test_selected = X_test[:, selected_features]
+    # Convert selected_features to list if it's a numpy array
+    feature_indices = selected_features.tolist() if hasattr(selected_features, 'tolist') else selected_features
+    
+    # Use pandas iloc for proper indexing
+    X_train_selected = X_train.iloc[:, feature_indices]
+    X_test_selected = X_test.iloc[:, feature_indices]
     
     print(f"   Original: {X_train.shape} -> Selected: {X_train_selected.shape}")
     print(f"   Test: {X_test.shape} -> Selected: {X_test_selected.shape}")
@@ -163,13 +167,8 @@ def run_deepseek_feature_selection():
     deepseek_dir = f"{config.RESULTS_DIR}/deepseek_rl"
     os.makedirs(deepseek_dir, exist_ok=True)
     
-    # Save training plots
-    try:
-        plot_path = f"{deepseek_dir}/training_history.png"
-        deepseek_rl.plot_training_history(plot_path)
-        print(f"   📊 Training plots saved: {plot_path}")
-    except Exception as e:
-        print(f"   ⚠️ Could not save training plots: {e}")
+    # Plotting not available in optimized version
+    print("   📊 Training plots not available in optimized version")
     
     # Prepare results
     results = {
@@ -240,7 +239,6 @@ def run_deepseek_feature_selection():
     print(f"\n📁 Files saved:")
     print(f"   📦 Complete results: {results_file}")
     print(f"   🏷️  Features only: {lightweight_file}")
-    print(f"   📊 Training plots: {deepseek_dir}/training_history.png")
     print(f"\n🚀 Next step: Run SCS-ID training with pre-selected features:")
     print(f"   python experiments/train_scs_id_fast.py")
     print("="*70)
