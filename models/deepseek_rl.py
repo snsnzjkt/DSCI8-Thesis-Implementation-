@@ -587,6 +587,16 @@ class DeepSeekRL:
         self.agent.optimizer.load_state_dict(checkpoint['optimizer_state'])
         
         print(f"📂 Model loaded from {path}")
+    
+    def to(self, device):
+        """
+        Move internal components to the specified device (e.g., 'cuda' or 'cpu').
+        """
+        if self.agent:
+            self.agent.q_network.to(device)
+            self.agent.target_network.to(device)
+            self.agent.device = device
+        print(f"DeepSeekRL moved to device: {device}")
 
 
 def evaluate_feature_importance(X, y, selected_features=None, top_k=20, feature_names=None):
