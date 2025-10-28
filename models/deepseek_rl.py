@@ -94,9 +94,14 @@ class FeatureSelectionEnvironment:
             X_train_selected = self.X_train[:, selected_idx]
             X_val_selected = self.X_val[:, selected_idx]
             
+            # Debugging log to track repeated calls
+            print("Evaluating features...")
+
             # Ensure tensors are moved to CPU before converting to NumPy
-            X_train_selected = X_train_selected.cpu().numpy() if isinstance(X_train_selected, torch.Tensor) else X_train_selected
-            X_val_selected = X_val_selected.cpu().numpy() if isinstance(X_val_selected, torch.Tensor) else X_val_selected
+            if isinstance(X_train_selected, torch.Tensor):
+                X_train_selected = X_train_selected.detach().cpu().numpy()
+            if isinstance(X_val_selected, torch.Tensor):
+                X_val_selected = X_val_selected.detach().cpu().numpy()
             
             # Quick evaluation with Random Forest
             rf = RandomForestClassifier(
