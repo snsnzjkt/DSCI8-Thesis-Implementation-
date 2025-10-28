@@ -381,6 +381,8 @@ class DeepSeekRL:
     """
     
     def __init__(self, max_features=42):
+        if max_features > 78:
+            raise ValueError(f"max_features cannot exceed 78 (got {max_features})")
         self.max_features = max_features
         self.selected_features_idx = None
         self.agent = None
@@ -401,6 +403,9 @@ class DeepSeekRL:
             target_network_update: Update target network every N episodes
             verbose: Print training progress
         """
+        # Validate input feature dimensions
+        if X_train.shape[1] != 78:
+            raise ValueError(f"Expected 78 input features but got {X_train.shape[1]}. Please check preprocessing pipeline.")
         print(f"\n{'='*70}")
         print(f"🧠 DeepSeek RL Feature Selection Training")
         print(f"{'='*70}")
