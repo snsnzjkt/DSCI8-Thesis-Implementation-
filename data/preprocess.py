@@ -95,6 +95,10 @@ class CICIDSPreprocessor:
         initial_rows = len(df)
         initial_cols = len(df.columns)
         
+        # Validate feature count (excluding label column)
+        if initial_cols != config.NUM_FEATURES + 1:  # +1 for label column
+            raise ValueError(f"Expected {config.NUM_FEATURES} features + 1 label column, but got {initial_cols} columns. Check raw data.")
+        
         # Get numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         
