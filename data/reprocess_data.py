@@ -10,11 +10,23 @@ from data.preprocess import CICIDSPreprocessor
 from config import config
 
 def main():
-    print("Reprocessing CIC-IDS2017 dataset...")
-    print(f"Target: {config.NUM_FEATURES} features")
+    print("="*70)
+    print("REPROCESSING CIC-IDS2017 DATASET")
+    print("="*70)
+    print(f"Target Features: {config.NUM_FEATURES}")
+    print(f"Clearing existing preprocessed files...")
     
     preprocessor = CICIDSPreprocessor()
-    preprocessor.process_all_files(force_reprocess=True)
+    
+    # Force reprocess and validate feature count
+    results = preprocessor.process_all_files(force_reprocess=True, validate_features=True)
+    
+    print("\nValidation Results:")
+    print(f"Features processed: {results['num_features']}")
+    if results['num_features'] != config.NUM_FEATURES:
+        print(f"⚠️ WARNING: Expected {config.NUM_FEATURES} features but got {results['num_features']}")
+        sys.exit(1)
+    print("✓ Feature count matches configuration")
     
 if __name__ == "__main__":
     main()
