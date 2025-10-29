@@ -330,11 +330,19 @@ class DQNAgent:
         batch = np.random.choice(len(self.memory), batch_size, replace=False)
         batch = [self.memory[i] for i in batch]
         
-        states = torch.FloatTensor([s for s, _, _, _, _ in batch])
-        actions = torch.LongTensor([a for _, a, _, _, _ in batch])
-        rewards = torch.FloatTensor([r for _, _, r, _, _ in batch])
-        next_states = torch.FloatTensor([ns for _, _, _, ns, _ in batch])
-        dones = torch.FloatTensor([d for _, _, _, _, d in batch])
+        # Convert batch components to numpy arrays first for better performance
+        states = np.array([s for s, _, _, _, _ in batch])
+        actions = np.array([a for _, a, _, _, _ in batch])
+        rewards = np.array([r for _, _, r, _, _ in batch])
+        next_states = np.array([ns for _, _, _, ns, _ in batch])
+        dones = np.array([d for _, _, _, _, d in batch])
+        
+        # Convert numpy arrays to tensors (much faster than converting lists)
+        states = torch.FloatTensor(states)
+        actions = torch.LongTensor(actions)
+        rewards = torch.FloatTensor(rewards)
+        next_states = torch.FloatTensor(next_states)
+        dones = torch.FloatTensor(dones)
         
         # Current Q values
         current_q = self.q_network(states).gather(1, actions.unsqueeze(1))
