@@ -156,10 +156,17 @@ class FastSCSIDTrainer:
         y_true, y_pred = [], []
         
         with torch.no_grad():
+            # Determine the device where the model's parameters live
+            try:
+                first_param = next(model.parameters())
+                model_device = first_param.device
+            except StopIteration:
+                # Model has no parameters; fall back to trainer device
+                model_device = torch.device(self.device)
+
             for data, target in loader:
-                # Handle both CPU and GPU cases
-                if self.device.type == 'cuda' and not isinstance(model, torch.ao.quantization.quantize_dynamic.QuantizedModel):
-                    data, target = data.to(self.device, non_blocking=True), target.to(self.device, non_blocking=True)
+                # Move inputs to the same device as the model to avoid device mismatch
+                data, target = data.to(model_device, non_blocking=True), target.to(model_device, non_blocking=True)
                 data = data.unsqueeze(1).unsqueeze(-1)
                 output = model(data)
                 pred = output.argmax(dim=1)

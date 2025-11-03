@@ -106,9 +106,16 @@ def run_deepseek_feature_selection():
     # Set up device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    # Convert DataFrames to numpy arrays
-    X_train_rl = X_train_rl.values
-    X_val_rl = X_val_rl.values
+    # Ensure arrays (convert DataFrame to numpy if needed)
+    if hasattr(X_train_rl, 'values'):
+        X_train_rl = X_train_rl.values
+    else:
+        X_train_rl = np.asarray(X_train_rl)
+
+    if hasattr(X_val_rl, 'values'):
+        X_val_rl = X_val_rl.values
+    else:
+        X_val_rl = np.asarray(X_val_rl)
     
     # Initialize DeepSeekRL
     deepseek_rl = DeepSeekRL(max_features=target_features)
@@ -155,9 +162,16 @@ def run_deepseek_feature_selection():
     # Convert selected_features to list if it's a numpy array
     feature_indices = selected_features.tolist() if hasattr(selected_features, 'tolist') else selected_features
     
-    # Use pandas iloc for proper indexing
-    X_train_selected = X_train.iloc[:, feature_indices]
-    X_test_selected = X_test.iloc[:, feature_indices]
+    # Index selected features, supporting both pandas DataFrame and numpy arrays
+    if hasattr(X_train, 'iloc'):
+        X_train_selected = X_train.iloc[:, feature_indices]
+    else:
+        X_train_selected = X_train[:, feature_indices]
+
+    if hasattr(X_test, 'iloc'):
+        X_test_selected = X_test.iloc[:, feature_indices]
+    else:
+        X_test_selected = X_test[:, feature_indices]
     
     print(f"   Original: {X_train.shape} -> Selected: {X_train_selected.shape}")
     print(f"   Test: {X_test.shape} -> Selected: {X_test_selected.shape}")
