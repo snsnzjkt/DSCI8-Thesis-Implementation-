@@ -12,9 +12,9 @@ class Config:
     NUM_CLASSES = 16
     
     # Training
-    BATCH_SIZE = 32
+    BATCH_SIZE = 64
     LEARNING_RATE = 1e-4
-    EPOCHS = 25
+    EPOCHS = 100  # Increased for better convergence
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
     # Model parameters
@@ -22,7 +22,7 @@ class Config:
     PRUNING_RATIO = 0.3
     
     # DeepSeek RL parameters
-    DEEPSEEK_RL_EPISODES = 100  # Reduced from 200 for faster training
+    DEEPSEEK_RL_EPISODES = 200  # Restored to thesis requirement
     
     # Create directories
     os.makedirs(DATA_DIR, exist_ok=True)
