@@ -194,11 +194,6 @@ class OptimizedTrainer:
         optimizer = ThresholdOptimizer(target_fpr=0.01)
         results = optimizer.optimize_threshold(y_true, y_prob, verbose=True)
         
-        # Get model parameters
-        total_params, pruned_params = model.count_parameters()
-        results['total_parameters'] = total_params
-        results['total_parameters_after_pruning'] = pruned_params
-        
         # Calculate original FPR (before optimization)
         binary_true = (y_true > 0).astype(int)
         binary_pred_default = (y_prob.argmax(axis=1) > 0).astype(int)
@@ -326,30 +321,42 @@ class OptimizedTrainer:
         plt.close()
         
         # Plot confusion matrix
-        cm = confusion_matrix(targets, predictions)
-        plt.figure(figsize=(12, 10))
-        
-        # Show only top 10 classes for readability if more than 10 classes
-        if len(class_names) > 10:
-            unique, counts = np.unique(targets, return_counts=True)
-            top_10_idx = np.argsort(counts)[-10:]
-            cm_filtered = cm[np.ix_(top_10_idx, top_10_idx)]
-            class_names_filtered = [class_names[i] for i in top_10_idx]
-            sns.heatmap(cm_filtered, annot=True, fmt='d', cmap='Blues',
-                       xticklabels=class_names_filtered, yticklabels=class_names_filtered)
-            plt.title('Confusion Matrix (Top 10 Classes)')
-        else:
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                       xticklabels=class_names, yticklabels=class_names)
-            plt.title('Confusion Matrix')
-        
-        plt.ylabel('True Label')
-        plt.xlabel('Predicted Label')
-        plt.xticks(rotation=45)
-        plt.yticks(rotation=0)
-        plt.tight_layout()
-        plt.savefig(f"{config.RESULTS_DIR}/scs_id_optimized_confusion_matrix.png", dpi=300, bbox_inches='tight')
-        plt.close()
+        try:
+            print("\n📊 Generating confusion matrix...")
+            cm = confusion_matrix(targets, predictions)
+            plt.figure(figsize=(12, 10))
+            
+            if not class_names or len(class_names) != len(np.unique(targets)):
+                print("⚠️ Warning: Using numerical labels for confusion matrix")
+                class_names = [str(i) for i in range(len(np.unique(targets)))]
+            
+            # Show only top 10 classes for readability if more than 10 classes
+            if len(class_names) > 10:
+                unique, counts = np.unique(targets, return_counts=True)
+                top_10_idx = np.argsort(counts)[-10:]
+                cm_filtered = cm[np.ix_(top_10_idx, top_10_idx)]
+                class_names_filtered = [class_names[i] for i in top_10_idx]
+                plt.figure(figsize=(15, 12))
+                sns.heatmap(cm_filtered, annot=True, fmt='d', cmap='Blues',
+                           xticklabels=class_names_filtered, yticklabels=class_names_filtered)
+                plt.title('Confusion Matrix (Top 10 Classes)')
+            else:
+                plt.figure(figsize=(12, 10))
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                           xticklabels=class_names, yticklabels=class_names)
+                plt.title('Confusion Matrix')
+            
+            plt.ylabel('True Label')
+            plt.xlabel('Predicted Label')
+            plt.xticks(rotation=45, ha='right')
+            plt.yticks(rotation=0)
+            plt.tight_layout()
+            plt.savefig(f"{config.RESULTS_DIR}/scs_id_optimized_confusion_matrix.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print("✅ Confusion matrix saved successfully!")
+        except Exception as e:
+            print(f"\n⚠️ Warning: Could not generate confusion matrix: {str(e)}")
+            print("Continuing with remaining analysis...")
 
         # Save all results
         results = {
