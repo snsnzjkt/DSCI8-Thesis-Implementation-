@@ -1,0 +1,16 @@
+SCS-ID Optimized Model Results Summary
+========================================
+
+Test Accuracy: 0.9974 (99.74%)
+F1-Score: 0.9973
+Training Time: 27839.55 seconds
+Model Parameters: 21079
+Model Size: 82.33984375 KB
+Compression Ratio: N/A
+Device: cuda
+
+Threshold Optimization Results:
+  Optimal Threshold: 0.0167120099067688
+  Original FPR: 0.002278829614226701
+  Optimized FPR: N/A
+  FPR Reduction: N/A
