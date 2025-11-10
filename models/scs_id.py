@@ -40,25 +40,32 @@ class FireModule(nn.Module):
         """
         super(FireModule, self).__init__()
         
-        # Aggressive channel reduction for efficiency
-        squeeze_ratio = 4  # More aggressive squeeze ratio
-        squeeze_channels = max(input_channels // squeeze_ratio, 4)  # Reduced minimum channels
+        # More aggressive squeeze ratio (reduced squeeze channels)
+        squeeze_ratio = 8  # Increased from 4 to 8 for more reduction
+        squeeze_channels = max(input_channels // squeeze_ratio, 4)  # Ensure minimum channels
         
-        # Efficient squeeze layer
+        # Squeeze layer: 1x1 convolution with reduced dimensions
         self.squeeze = nn.Conv1d(input_channels, squeeze_channels, kernel_size=1)
         self.squeeze_bn = nn.BatchNorm1d(squeeze_channels)
         self.squeeze_activation = nn.ReLU(inplace=True)
         
-        # Balanced channel reduction
-        expand_ratio = 3  # Reduced from 2 to 3 for better feature extraction
-        expand1x1_channels = max(expand1x1_channels // expand_ratio, 8)
-        expand3x3_channels = max(expand3x3_channels // expand_ratio, 8)
+        # Much more aggressive channel reduction
+        expand1x1_channels = max(expand1x1_channels // 4, 4)  # 75% reduction
+        expand3x3_channels = max(expand3x3_channels // 4, 4)  # 75% reduction
         
-        # Expand layer: parallel 1x1 and 3x3 convolutions with reduced channels
-        self.expand1x1 = nn.Conv1d(squeeze_channels, expand1x1_channels, kernel_size=1)
+        # Expand layer: parallel 1x1 and 3x3 convolutions with heavily reduced channels
+        self.expand1x1 = nn.Conv1d(squeeze_channels, expand1x1_channels, kernel_size=1, groups=1)
         self.expand1x1_bn = nn.BatchNorm1d(expand1x1_channels)
         
-        self.expand3x3 = nn.Conv1d(squeeze_channels, expand3x3_channels, kernel_size=3, padding=1)
+        # Use depthwise separable convolution for 3x3
+        self.expand3x3_depthwise = nn.Conv1d(
+            squeeze_channels, squeeze_channels, 
+            kernel_size=3, padding=1, groups=squeeze_channels
+        )
+        self.expand3x3_pointwise = nn.Conv1d(
+            squeeze_channels, expand3x3_channels, 
+            kernel_size=1, groups=1
+        )
         self.expand3x3_bn = nn.BatchNorm1d(expand3x3_channels)
         
         self.expand_activation = nn.ReLU(inplace=True)
@@ -82,7 +89,9 @@ class FireModule(nn.Module):
         out1x1 = self.expand1x1(x)
         out1x1 = self.expand1x1_bn(out1x1)
         
-        out3x3 = self.expand3x3(x)
+        # Depthwise -> Pointwise for 3x3 path
+        out3x3 = self.expand3x3_depthwise(x)
+        out3x3 = self.expand3x3_pointwise(out3x3)
         out3x3 = self.expand3x3_bn(out3x3)
         
         # Concatenate and activate
@@ -96,14 +105,13 @@ class FireModule(nn.Module):
 
 class ConvSeekBlock(nn.Module):
     """
-    ConvSeek Block: Balanced Efficiency-Performance Architecture
+    ConvSeek Block: Enhanced Depthwise Separable Convolution with Pruning
     
-    Implements an optimized convolution pattern that:
+    Implements depthwise separable convolutions with pruning and quantization:
     1. Uses depthwise separable convolutions for parameter efficiency
-    2. Maintains key feature extraction capabilities
-    3. Balances model size with detection performance
-    4. Preserves ability to detect minority attack classes
-    5. Optimizes memory usage without sacrificing accuracy
+    2. Implements channel pruning during training
+    3. Supports quantization-aware training
+    4. Adaptive channel reduction based on importance
     1. Depthwise convolution: Each channel convolved separately
     2. Pointwise convolution: 1x1 convolution to combine channels
     
@@ -133,13 +141,19 @@ class ConvSeekBlock(nn.Module):
             input_channels, input_channels,
             kernel_size=kernel_size,
             padding=padding,
-            groups=input_channels  # Key: groups=channels for depthwise
+            groups=input_channels,  # Depthwise: each channel separate
+            bias=False  # Remove bias for efficiency
         )
         self.bn1 = nn.BatchNorm1d(input_channels)
         
-        # Pointwise convolution (1x1 to combine channels)
-        self.pointwise = nn.Conv1d(input_channels, output_channels, kernel_size=1)
-        self.bn2 = nn.BatchNorm1d(output_channels)
+        # Reduced intermediate channels for pointwise
+        intermediate_channels = max(input_channels // 4, output_channels // 4, 4)
+        
+        # Two-step pointwise for better reduction
+        self.pointwise1 = nn.Conv1d(input_channels, intermediate_channels, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm1d(intermediate_channels)
+        self.pointwise2 = nn.Conv1d(intermediate_channels, output_channels, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm1d(output_channels)
         
         # Activation and regularization
         self.activation = nn.ReLU(inplace=True)
