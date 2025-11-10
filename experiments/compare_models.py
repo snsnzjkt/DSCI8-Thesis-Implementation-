@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # experiments/compare_models.py - Complete Model Comparison and Statistical Analysis
 import sys
 from pathlib import Path
@@ -6,6 +7,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 import torch
+import torch.nn as nn
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -41,14 +43,16 @@ class ModelComparator:
         self.results = {}
         self.statistical_tests = {}
         self.comparison_metrics = {}
+        self.n_bootstrap = 1000  # Number of bootstrap iterations
+        self.alpha = 0.05  # Significance level for statistical tests
         
     def load_model_results(self):
         """Load results from both baseline and SCS-ID experiments"""
         print("📊 Loading model results for comparison...")
         
         # Load baseline results
-        baseline_path = Path(config.RESULTS_DIR) / "baseline_results.pkl"
-        scs_id_path = Path(config.RESULTS_DIR) / "scs_id_optimized_results.pkl"  # Using optimized results
+        baseline_path = Path(config.RESULTS_DIR) / "baseline" / "baseline_results.pkl"
+        scs_id_path = Path(config.RESULTS_DIR) / "scs_id" / "scs_id_optimized_results.pkl"  # Using optimized results
         
         if not baseline_path.exists():
             print(f"❌ Baseline results not found at: {baseline_path}")
@@ -91,7 +95,7 @@ class ModelComparator:
     def _validate_results_format(self):
         """Validate that loaded results have the required format"""
         required_baseline_fields = ['test_accuracy', 'f1_score', 'labels', 'predictions', 'model_parameters']
-        required_scs_id_fields = ['test_accuracy', 'f1_score', 'labels', 'predictions', 'total_parameters_after_pruning']  # Updated for fast results
+        required_scs_id_fields = ['test_accuracy', 'f1_score', 'labels', 'predictions', 'model_stats']  # Updated to match actual format
         
         missing_baseline = [field for field in required_baseline_fields if field not in self.baseline_results]
         missing_scs_id = [field for field in required_scs_id_fields if field not in self.scs_id_results]
@@ -103,6 +107,168 @@ class ModelComparator:
         if missing_scs_id:
             print(f"⚠️  Warning: Missing SCS-ID result fields: {missing_scs_id}")
             print("   Some comparisons may not work correctly.")
+            
+    def paired_t_test(self):
+        """
+        Perform paired t-test on accuracy differences (Equation III.12)
+        Returns:
+            dict: t-statistic, p-value, and test interpretation
+        """
+        baseline_preds = np.array(self.baseline_results['predictions'])
+        scs_id_preds = np.array(self.scs_id_results['predictions'])
+        true_labels = np.array(self.baseline_results['labels'])
+        
+        # Calculate per-sample accuracy (1 for correct, 0 for incorrect)
+        baseline_correct = (baseline_preds == true_labels).astype(int)
+        scs_id_correct = (scs_id_preds == true_labels).astype(int)
+        
+        # Paired t-test
+        t_stat, p_value = stats.ttest_rel(scs_id_correct, baseline_correct)
+        
+        result = {
+            't_statistic': t_stat,
+            'p_value': p_value,
+            'significant': p_value < self.alpha,
+            'interpretation': 'Significant improvement' if p_value < self.alpha and t_stat > 0 else 'No significant improvement'
+        }
+        
+        return result
+    
+    def wilcoxon_test(self):
+        """
+        Perform Wilcoxon signed-rank test (non-parametric alternative)
+        Returns:
+            dict: test statistic, p-value, and test interpretation
+        """
+        baseline_preds = np.array(self.baseline_results['predictions'])
+        scs_id_preds = np.array(self.scs_id_results['predictions'])
+        true_labels = np.array(self.baseline_results['labels'])
+        
+        # Calculate per-sample accuracy
+        baseline_correct = (baseline_preds == true_labels).astype(int)
+        scs_id_correct = (scs_id_preds == true_labels).astype(int)
+        
+        # Wilcoxon signed-rank test
+        stat, p_value = stats.wilcoxon(scs_id_correct, baseline_correct)
+        
+        result = {
+            'statistic': stat,
+            'p_value': p_value,
+            'significant': p_value < self.alpha,
+            'interpretation': 'Significant difference' if p_value < self.alpha else 'No significant difference'
+        }
+        
+        return result
+    
+    def cohens_d(self):
+        """
+        Calculate Cohen's d effect size
+        Returns:
+            dict: effect size and interpretation
+        """
+        baseline_preds = np.array(self.baseline_results['predictions'])
+        scs_id_preds = np.array(self.scs_id_results['predictions'])
+        true_labels = np.array(self.baseline_results['labels'])
+        
+        # Calculate per-sample accuracy
+        baseline_correct = (baseline_preds == true_labels).astype(int)
+        scs_id_correct = (scs_id_preds == true_labels).astype(int)
+        
+        # Calculate Cohen's d
+        d = (np.mean(scs_id_correct) - np.mean(baseline_correct)) / np.sqrt(
+            (np.var(scs_id_correct) + np.var(baseline_correct)) / 2
+        )
+        
+        # Interpret effect size
+        if abs(d) < 0.2:
+            interpretation = 'Negligible effect'
+        elif abs(d) < 0.5:
+            interpretation = 'Small effect'
+        elif abs(d) < 0.8:
+            interpretation = 'Medium effect'
+        else:
+            interpretation = 'Large effect'
+            
+        result = {
+            'effect_size': d,
+            'interpretation': interpretation
+        }
+        
+        return result
+    
+    def bootstrap_confidence_intervals(self):
+        """
+        Calculate bootstrap confidence intervals for performance metrics
+        Returns:
+            dict: confidence intervals for accuracy and F1-score
+        """
+        baseline_preds = np.array(self.baseline_results['predictions'])
+        scs_id_preds = np.array(self.scs_id_results['predictions'])
+        true_labels = np.array(self.baseline_results['labels'])
+        
+        def bootstrap_metric(preds, labels):
+            n_samples = len(labels)
+            accuracies = []
+            f1_scores = []
+            
+            for _ in range(self.n_bootstrap):
+                # Sample with replacement
+                indices = np.random.choice(n_samples, n_samples, replace=True)
+                boot_preds = preds[indices]
+                boot_labels = labels[indices]
+                
+                # Calculate metrics
+                accuracies.append(accuracy_score(boot_labels, boot_preds))
+                _, _, f1, _ = precision_recall_fscore_support(boot_labels, boot_preds, average='weighted')
+                f1_scores.append(f1)
+                
+            return {
+                'accuracy': {
+                    'mean': np.mean(accuracies),
+                    'ci_lower': np.percentile(accuracies, 2.5),
+                    'ci_upper': np.percentile(accuracies, 97.5)
+                },
+                'f1_score': {
+                    'mean': np.mean(f1_scores),
+                    'ci_lower': np.percentile(f1_scores, 2.5),
+                    'ci_upper': np.percentile(f1_scores, 97.5)
+                }
+            }
+            
+        baseline_ci = bootstrap_metric(baseline_preds, true_labels)
+        scs_id_ci = bootstrap_metric(scs_id_preds, true_labels)
+        
+        return {
+            'baseline': baseline_ci,
+            'scs_id': scs_id_ci
+        }
+    
+    def shapiro_wilk_test(self):
+        """
+        Perform Shapiro-Wilk test for normality (Equation III.13)
+        Returns:
+            dict: test results for accuracy differences
+        """
+        baseline_preds = np.array(self.baseline_results['predictions'])
+        scs_id_preds = np.array(self.scs_id_results['predictions'])
+        true_labels = np.array(self.baseline_results['labels'])
+        
+        # Calculate accuracy differences
+        baseline_correct = (baseline_preds == true_labels).astype(int)
+        scs_id_correct = (scs_id_preds == true_labels).astype(int)
+        differences = scs_id_correct - baseline_correct
+        
+        # Shapiro-Wilk test
+        stat, p_value = stats.shapiro(differences)
+        
+        result = {
+            'statistic': stat,
+            'p_value': p_value,
+            'normal': p_value >= self.alpha,
+            'interpretation': 'Normal distribution' if p_value >= self.alpha else 'Non-normal distribution'
+        }
+        
+        return result
     
     def calculate_computational_metrics(self):
         """Calculate computational efficiency improvements"""
@@ -111,7 +277,7 @@ class ModelComparator:
         # Parameter Count Reduction (PCR) with error handling
         try:
             baseline_params = self.baseline_results.get('model_parameters', 0)
-            scs_id_params = self.scs_id_results.get('total_parameters', 0)
+            scs_id_params = self.scs_id_results.get('model_stats', {}).get('total_parameters', 0)
             
             if baseline_params == 0:
                 print("   ⚠️  Warning: Baseline parameters not available, using default")
@@ -238,14 +404,8 @@ class ModelComparator:
         }
     
     def perform_statistical_tests(self):
-        """Perform statistical significance tests as specified in thesis and create visual summary"""
+        """Perform statistical significance tests as specified in thesis"""
         print("\n📈 Performing statistical significance tests...")
-        
-        # Create visual summary of hypothesis testing
-        plt.figure(figsize=(12, 8))
-        
-        # 1. Statistical Test Results Panel
-        plt.subplot(2, 2, 1)
         
         # Get per-class F1 scores for both models
         baseline_report = self.baseline_results['classification_report']
@@ -346,9 +506,9 @@ class ModelComparator:
         try:
             # Try to get the actual numeric value
             if hasattr(p_value, 'item'):
-                pval = p_value.item()  # type: ignore
+                pval = p_value.item()
             elif isinstance(p_value, (int, float, np.floating, np.integer)):
-                pval = float(p_value)  # type: ignore
+                pval = float(p_value)
             else:
                 # For objects that might be scipy result objects, convert via string
                 pval = float(str(p_value))
@@ -411,13 +571,13 @@ class ModelComparator:
         """Interpret Cohen's d effect size"""
         abs_d = abs(cohens_d)
         if abs_d < 0.2:
-            return "Small"
+            return "Negligible effect"
         elif abs_d < 0.5:
-            return "Medium"
+            return "Small effect"
         elif abs_d < 0.8:
-            return "Large"
+            return "Medium effect"
         else:
-            return "Very Large"
+            return "Large effect"
     
     def _get_attack_class_names(self):
         """Get the list of attack class names"""
@@ -456,81 +616,6 @@ class ModelComparator:
         except:
             # Fallback to known minority classes from thesis
             return ['Heartbleed', 'SQL-Injection', 'Backdoor']
-    
-    def create_realtime_performance_dashboard(self):
-        """Create a real-time performance metrics dashboard"""
-        print("\n📊 Creating real-time performance dashboard...")
-        
-        # Create a new figure for the dashboard
-        plt.figure(figsize=(15, 10))
-        
-        # 1. Inference Time Distribution
-        plt.subplot(2, 2, 1)
-        baseline_times = self.baseline_results.get('inference_times', [])
-        scs_id_times = self.scs_id_results.get('inference_times', [])
-        
-        if baseline_times and scs_id_times:
-            plt.hist(baseline_times, alpha=0.5, label='Baseline CNN', bins=30)
-            plt.hist(scs_id_times, alpha=0.5, label='SCS-ID', bins=30)
-            plt.xlabel('Inference Time (ms)')
-            plt.ylabel('Frequency')
-            plt.title('Inference Time Distribution')
-            plt.legend()
-        
-        # 2. Memory Usage Timeline
-        plt.subplot(2, 2, 2)
-        baseline_memory = self.baseline_results.get('memory_timeline', [])
-        scs_id_memory = self.scs_id_results.get('memory_timeline', [])
-        
-        if baseline_memory and scs_id_memory:
-            plt.plot(baseline_memory, label='Baseline CNN')
-            plt.plot(scs_id_memory, label='SCS-ID')
-            plt.xlabel('Time')
-            plt.ylabel('Memory Usage (MB)')
-            plt.title('Memory Usage Timeline')
-            plt.legend()
-        
-        # 3. CPU/GPU Utilization
-        plt.subplot(2, 2, 3)
-        metrics = ['CPU', 'GPU', 'Memory']
-        baseline_util = [
-            self.baseline_results.get('cpu_util', 50),
-            self.baseline_results.get('gpu_util', 60),
-            self.baseline_results.get('memory_util', 40)
-        ]
-        scs_id_util = [
-            self.scs_id_results.get('cpu_util', 30),
-            self.scs_id_results.get('gpu_util', 40),
-            self.scs_id_results.get('memory_util', 25)
-        ]
-        
-        x = np.arange(len(metrics))
-        width = 0.35
-        
-        plt.bar(x - width/2, baseline_util, width, label='Baseline CNN')
-        plt.bar(x + width/2, scs_id_util, width, label='SCS-ID')
-        plt.xlabel('Resource')
-        plt.ylabel('Utilization (%)')
-        plt.title('Resource Utilization')
-        plt.xticks(x, metrics)
-        plt.legend()
-        
-        # 4. Throughput Analysis
-        plt.subplot(2, 2, 4)
-        baseline_throughput = self.baseline_results.get('throughput', [100])
-        scs_id_throughput = self.scs_id_results.get('throughput', [150])
-        
-        plt.bar(['Baseline CNN', 'SCS-ID'], 
-                [np.mean(baseline_throughput), np.mean(scs_id_throughput)])
-        plt.ylabel('Samples/second')
-        plt.title('Model Throughput')
-        
-        plt.tight_layout()
-        plt.savefig(f"{config.RESULTS_DIR}/realtime_performance_dashboard.png", 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"   ✅ Real-time performance dashboard saved: {config.RESULTS_DIR}/realtime_performance_dashboard.png")
     
     def compare_threshold_optimization(self):
         """
@@ -607,8 +692,6 @@ class ModelComparator:
         """
         Create visualization comparing threshold optimization results
         """
-        import matplotlib.pyplot as plt
-        
         fig, axes = plt.subplots(1, 3, figsize=(18, 5))
         
         # Plot 1: FPR Comparison (Original vs Optimized)
@@ -640,7 +723,7 @@ class ModelComparator:
         ax1.grid(True, alpha=0.3, axis='y')
         
         # Add value labels
-        for bar in bars1 + bars2:
+        for bar in list(bars1) + list(bars2):
             height = bar.get_height()
             ax1.annotate(f'{height:.4f}',
                         xy=(bar.get_x() + bar.get_width() / 2, height),
@@ -943,19 +1026,18 @@ class ModelComparator:
         
         # Create a text-based visualization of statistical results
         test_results = self.statistical_tests
-        text_content = f"""Statistical Test Results
         
-Test Used: {test_results['significance_test']['test_used']}
-Test Statistic: {test_results['significance_test']['statistic']:.4f}
-P-value: {test_results['significance_test']['p_value']:.4f}
-Significant (α=0.05): {'Yes' if test_results['significance_test']['significant'] else 'No'}
-
-Effect Size (Cohen's d): {test_results['effect_size']['cohens_d']:.4f}
-Interpretation: {test_results['effect_size']['interpretation']}
-
-Mean F1-Score:
-  Baseline: {test_results['descriptive_stats']['baseline_mean_f1']:.4f}
-  SCS-ID: {test_results['descriptive_stats']['scs_id_mean_f1']:.4f}"""
+        # Format each line individually to avoid f-string formatting issues
+        text_content = "Statistical Test Results\n\n"
+        text_content += f"Test Used: {str(test_results.get('significance_test', {}).get('test_used', 'N/A'))}\n"
+        text_content += f"Test Statistic: {float(test_results.get('significance_test', {}).get('statistic', 0.0)):.4f}\n"
+        text_content += f"P-value: {float(test_results.get('significance_test', {}).get('p_value', 1.0)):.4f}\n"
+        text_content += f"Significant (α=0.05): {'Yes' if test_results.get('significance_test', {}).get('significant', False) else 'No'}\n\n"
+        text_content += f"Effect Size (Cohen's d): {float(test_results.get('effect_size', {}).get('cohens_d', 0.0)):.4f}\n"
+        text_content += f"Interpretation: {str(test_results.get('effect_size', {}).get('interpretation', 'N/A'))}\n\n"
+        text_content += f"Mean F1-Score:\n"
+        text_content += f"  Baseline: {test_results.get('descriptive_stats', {}).get('baseline_mean_f1', 0.0):.4f}\n"
+        text_content += f"  SCS-ID: {test_results.get('descriptive_stats', {}).get('scs_id_mean_f1', 0.0):.4f}"
         
         plt.text(0.1, 0.9, text_content, transform=plt.gca().transAxes,
                 fontsize=12, fontfamily='monospace',
@@ -970,633 +1052,6 @@ Mean F1-Score:
         plt.close()
         print(f"   ✅ Statistical summary saved: {output_dir/'statistical_summary.png'}")
         
-        # 1. MCC and Basic Metrics Comparison (2x2 grid, top-left)
-        ax1 = plt.subplot(4, 3, 1)
-        metrics = ['Accuracy', 'F1-Score', 'MCC']
-        baseline_values = [
-            self.performance_comparison['accuracy']['baseline'],
-            self.performance_comparison['f1_score']['baseline'],
-            self.performance_comparison['matthews_correlation']['baseline']
-        ]
-        scs_id_values = [
-            self.performance_comparison['accuracy']['scs_id'],
-            self.performance_comparison['f1_score']['scs_id'],
-            self.performance_comparison['matthews_correlation']['scs_id']
-        ]
-        
-        x = np.arange(len(metrics))
-        width = 0.35
-        
-        bars1 = ax1.bar(x - width/2, baseline_values, width, label='Baseline CNN', color='#FF6B6B', alpha=0.8)
-        bars2 = ax1.bar(x + width/2, scs_id_values, width, label='SCS-ID', color='#4ECDC4', alpha=0.8)
-        
-        ax1.set_ylabel('Score', fontsize=12, fontweight='bold')
-        ax1.set_title('Core Metrics Comparison\n(Including MCC)', fontsize=14, fontweight='bold')
-        ax1.set_xticks(x)
-        ax1.set_xticklabels(metrics, rotation=45)
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        
-        # Add value labels
-        for bar in bars1 + bars2:
-            height = bar.get_height()
-            ax1.annotate(f'{height:.3f}',
-                        xy=(bar.get_x() + bar.get_width() / 2, height),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom',
-                        fontsize=10)
-        
-        # 2. FLOPS Comparison
-        ax2 = plt.subplot(4, 3, 2)
-        # Calculate FLOPS (example calculation - adjust based on your model architecture)
-        baseline_flops = self.baseline_results.get('flops', 1e9)  # Default 1 GFLOP
-        scs_id_flops = self.scs_id_results.get('flops', 5e8)     # Default 0.5 GFLOP
-        
-        flops_data = [baseline_flops/1e9, scs_id_flops/1e9]  # Convert to GFLOPS
-        flops_labels = ['Baseline CNN', 'SCS-ID']
-        
-        bars = ax2.bar(flops_labels, flops_data, color=['#FF9999', '#66B2FF'])
-        ax2.set_ylabel('GFLOPS', fontsize=12, fontweight='bold')
-        ax2.set_title('Computational Cost (GFLOPS)\nper Inference', fontsize=14, fontweight='bold')
-        
-        # Add value labels
-        for bar in bars:
-            height = bar.get_height()
-            ax2.annotate(f'{height:.2f}',
-                        xy=(bar.get_x() + bar.get_width() / 2, height),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom',
-                        fontweight='bold')
-        
-        # Add FLOPS reduction percentage
-        flops_reduction = ((baseline_flops - scs_id_flops) / baseline_flops) * 100
-        ax2.text(0.5, max(flops_data) * 1.1, f'{flops_reduction:.1f}% Reduction',
-                ha='center', transform=ax2.transData,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.7),
-                fontweight='bold')
-        
-        # 3. Per-Class F1-Score Heatmap
-        ax3 = plt.subplot(4, 3, 3)
-        class_names = self._get_attack_class_names()
-        baseline_f1 = self._get_per_class_f1_scores('baseline')
-        scs_id_f1 = self._get_per_class_f1_scores('scs_id')
-        
-        # Create comparison matrix
-        f1_comparison = np.vstack([baseline_f1, scs_id_f1])
-        sns.heatmap(f1_comparison, annot=True, cmap='RdYlGn', fmt='.3f',
-                   xticklabels=class_names, yticklabels=['Baseline', 'SCS-ID'],
-                   ax=ax3)
-        plt.setp(ax3.get_xticklabels(), rotation=45, ha='right')
-        ax3.set_title('Per-Class F1-Score Comparison', fontsize=14, fontweight='bold')
-        
-        # 4. Minority Class Analysis
-        ax4 = plt.subplot(4, 3, 4)
-        minority_classes = self._get_minority_classes()
-        
-        if minority_classes:
-            baseline_minority_f1 = self._get_per_class_f1_scores('baseline', minority_classes)
-            scs_id_minority_f1 = self._get_per_class_f1_scores('scs_id', minority_classes)
-            
-            x = np.arange(len(minority_classes))
-            width = 0.35
-            
-            bars1 = ax4.bar(x - width/2, baseline_minority_f1, width, label='Baseline CNN')
-            bars2 = ax4.bar(x + width/2, scs_id_minority_f1, width, label='SCS-ID')
-        else:
-            # Handle case when minority classes data is not available
-            ax4.text(0.5, 0.5, 'Minority class data not available',
-                    ha='center', va='center',
-                    transform=ax4.transAxes,
-                    fontsize=12, fontweight='bold')
-        
-        ax4.set_ylabel('F1-Score', fontsize=12, fontweight='bold')
-        ax4.set_title('Minority Class Performance\n(<100 samples)', fontsize=14, fontweight='bold')
-        ax4.set_xticks(x)
-        ax4.set_xticklabels(minority_classes, rotation=45, ha='right')
-        ax4.legend()
-        ax4.grid(True, alpha=0.3)
-        
-        # Add improvement percentages for minority classes
-        if minority_classes:
-            for i, (b_f1, s_f1) in enumerate(zip(baseline_minority_f1, scs_id_minority_f1)):
-                if b_f1 > 0:  # Avoid division by zero
-                    improvement = ((s_f1 - b_f1) / b_f1) * 100
-                    ax4.text(i, max(b_f1, s_f1) + 0.02,
-                            f'+{improvement:.1f}%' if improvement > 0 else f'{improvement:.1f}%',
-                            ha='center', va='bottom',
-                            color='green' if improvement > 0 else 'red',
-                            fontweight='bold')
-        
-        # Rest of your existing visualization code...
-        # (Keep the existing visualizations but adjust their subplot positions)
-        
-        # Add value labels on bars
-        for bar in bars1 + bars2:
-            height = bar.get_height()
-            ax1.annotate(f'{height:.3f}',
-                        xy=(bar.get_x() + bar.get_width() / 2, height),
-                        xytext=(0, 3),  # 3 points vertical offset
-                        textcoords="offset points",
-                        ha='center', va='bottom',
-                        fontsize=8)
-        
-        # 2. Computational Efficiency Comparison
-        ax2 = plt.subplot(3, 3, 2)
-        efficiency_metrics = ['Parameter\nReduction (%)', 'Memory\nReduction (%)', 'Speed\nImprovement (%)']
-        efficiency_values = [
-            self.computational_metrics['parameter_count_reduction'],
-            self.computational_metrics['memory_utilization_reduction'],
-            self.computational_metrics['inference_speed_improvement']
-        ]
-        
-        bars = ax2.bar(efficiency_metrics, efficiency_values, 
-                      color=['#FF9999', '#66B2FF', '#99FF99'], alpha=0.8)
-        ax2.set_ylabel('Improvement (%)')
-        ax2.set_title('Computational Efficiency Gains')
-        ax2.grid(True, alpha=0.3)
-        
-        # Add value labels
-        for bar, value in zip(bars, efficiency_values):
-            ax2.annotate(f'{value:.1f}%',
-                        xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom',
-                        fontweight='bold')
-        
-        # 3. False Positive Rate Comparison
-        ax3 = plt.subplot(3, 3, 3)
-        fpr_data = [
-            self.performance_comparison['false_positive_rate']['baseline'],
-            self.performance_comparison['false_positive_rate']['scs_id']
-        ]
-        fpr_labels = ['Baseline CNN', 'SCS-ID']
-        
-        bars = ax3.bar(fpr_labels, fpr_data, color=['#FF6B6B', '#4ECDC4'], alpha=0.8)
-        ax3.set_ylabel('False Positive Rate')
-        ax3.set_title('False Positive Rate Comparison')
-        ax3.grid(True, alpha=0.3)
-        
-        # Add value labels and improvement percentage
-        for bar, value in zip(bars, fpr_data):
-            ax3.annotate(f'{value:.4f}',
-                        xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom')
-        
-        # Add improvement annotation
-        improvement = self.performance_comparison['false_positive_rate']['reduction']
-        ax3.text(0.5, max(fpr_data) * 0.8, f'{improvement:.1f}% Reduction', 
-                ha='center', transform=ax3.transData, 
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.7),
-                fontweight='bold')
-        
-        # 4. Training History Comparison
-        ax4 = plt.subplot(3, 3, 4)
-        if 'train_accuracies' in self.baseline_results and 'train_accuracies' in self.scs_id_results:
-            epochs_baseline = range(1, len(self.baseline_results['train_accuracies']) + 1)
-            epochs_scs_id = range(1, len(self.scs_id_results['train_accuracies']) + 1)
-            
-            ax4.plot(epochs_baseline, self.baseline_results['train_accuracies'], 
-                    label='Baseline CNN', linewidth=2, alpha=0.8)
-            ax4.plot(epochs_scs_id, self.scs_id_results['train_accuracies'], 
-                    label='SCS-ID', linewidth=2, alpha=0.8)
-            
-            ax4.set_xlabel('Epochs')
-            ax4.set_ylabel('Training Accuracy (%)')
-            ax4.set_title('Training Accuracy Progression')
-            ax4.legend()
-            ax4.grid(True, alpha=0.3)
-        
-        # 5. Model Size Comparison
-        ax5 = plt.subplot(3, 3, 5)
-        model_sizes = [
-            self.computational_metrics['baseline_parameters'] / 1e6,  # Convert to millions
-            self.computational_metrics['scs_id_parameters'] / 1e6
-        ]
-        model_names = ['Baseline CNN', 'SCS-ID']
-        
-        bars = ax5.bar(model_names, model_sizes, color=['#FF8C00', '#32CD32'], alpha=0.8)
-        ax5.set_ylabel('Parameters (Millions)')
-        ax5.set_title('Model Size Comparison')
-        ax5.grid(True, alpha=0.3)
-        
-        for bar, value in zip(bars, model_sizes):
-            ax5.annotate(f'{value:.2f}M',
-                        xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom',
-                        fontweight='bold')
-        
-        # 6. Statistical Test Results
-        ax6 = plt.subplot(3, 3, 6)
-        ax6.axis('off')  # Turn off axes for text display
-        
-        # Display statistical test results as text
-        test_results = self.statistical_tests
-        text_content = f"""Statistical Test Results
-        
-Test Used: {test_results['significance_test']['test_used']}
-Test Statistic: {test_results['significance_test']['statistic']:.4f}
-P-value: {test_results['significance_test']['p_value']:.4f}
-Significant (α=0.05): {'Yes' if test_results['significance_test']['significant'] else 'No'}
-
-Effect Size (Cohen's d): {test_results['effect_size']['cohens_d']:.4f}
-Interpretation: {test_results['effect_size']['interpretation']}
-
-Mean F1-Score:
-  Baseline: {test_results['descriptive_stats']['baseline_mean_f1']:.4f}
-  SCS-ID: {test_results['descriptive_stats']['scs_id_mean_f1']:.4f}
-"""
-        
-        ax6.text(0.1, 0.9, text_content, transform=ax6.transAxes, fontsize=10,
-                verticalalignment='top', fontfamily='monospace',
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.8))
-        
-        # 7. Memory Usage Comparison
-        ax7 = plt.subplot(3, 3, 7)
-        memory_usage = [
-            self.computational_metrics['baseline_memory_mb'],
-            self.computational_metrics['scs_id_memory_mb']
-        ]
-        
-        bars = ax7.bar(model_names, memory_usage, color=['#FF6347', '#20B2AA'], alpha=0.8)
-        ax7.set_ylabel('Memory Usage (MB)')
-        ax7.set_title('Memory Usage Comparison')
-        ax7.grid(True, alpha=0.3)
-        
-        for bar, value in zip(bars, memory_usage):
-            ax7.annotate(f'{value:.1f} MB',
-                        xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom')
-        
-        # 8. Inference Time Comparison
-        ax8 = plt.subplot(3, 3, 8)
-        inference_times = [
-            self.computational_metrics['baseline_inference_ms'],
-            self.computational_metrics['scs_id_inference_ms']
-        ]
-        
-        bars = ax8.bar(model_names, inference_times, color=['#DA70D6', '#FFD700'], alpha=0.8)
-        ax8.set_ylabel('Inference Time (ms)')
-        ax8.set_title('Inference Speed Comparison')
-        ax8.grid(True, alpha=0.3)
-        
-        for bar, value in zip(bars, inference_times):
-            ax8.annotate(f'{value:.1f} ms',
-                        xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha='center', va='bottom')
-        
-        # 9. Overall Summary
-        ax9 = plt.subplot(3, 3, 9)
-        ax9.axis('off')
-        
-        summary_text = f"""Research Objectives Assessment
-
-✓ Real-time Monitoring Improvement:
-  Parameter reduction: {self.computational_metrics['parameter_count_reduction']:.1f}%
-  Speed improvement: {self.computational_metrics['inference_speed_improvement']:.1f}%
-  
-✓ Detection Accuracy Maintenance:
-  Accuracy change: {self.performance_comparison['accuracy']['improvement']:+.2f}%
-  F1-score change: {self.performance_comparison['f1_score']['improvement']:+.2f}%
-  
-✓ False Positive Reduction:
-  FPR reduction: {self.performance_comparison['false_positive_rate']['reduction']:.1f}%
-  
-Statistical Significance: {'CONFIRMED' if test_results['significance_test']['significant'] else 'NOT CONFIRMED'}
-"""
-        
-        ax9.text(0.1, 0.9, summary_text, transform=ax9.transAxes, fontsize=11,
-                verticalalignment='top',
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgreen", alpha=0.8))
-        
-        plt.tight_layout()
-        plt.savefig(f"{config.RESULTS_DIR}/comprehensive_model_comparison.png", 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"   ✅ Comprehensive comparison saved: {config.RESULTS_DIR}/comprehensive_model_comparison.png")
-
-    # --- Additional analysis & helper methods ---
-    def _bootstrap_ci(self, values, n_boot=1000, alpha=0.05):
-        """Compute bootstrap confidence interval for the mean of values."""
-        try:
-            vals = np.array(values)
-            n = len(vals)
-            if n == 0:
-                return (0.0, 0.0)
-            boots = []
-            rng = np.random.default_rng(42)
-            for _ in range(n_boot):
-                sample = rng.choice(vals, size=n, replace=True)
-                boots.append(np.mean(sample))
-            lower = np.percentile(boots, 100 * (alpha/2))
-            upper = np.percentile(boots, 100 * (1-alpha/2))
-            return lower, upper
-        except Exception:
-            return (0.0, 0.0)
-
-    def _get_input_features_and_classes(self):
-        """Try to infer input feature count and number of classes from results or processed data."""
-        # 1) Prefer explicit fields in results
-        try:
-            if 'input_features' in self.baseline_results:
-                input_features = int(self.baseline_results['input_features'])
-            else:
-                # Try to read processed data
-                processed_file = Path(config.DATA_DIR) / 'processed' / 'processed_data.pkl'
-                if processed_file.exists():
-                    with open(processed_file, 'rb') as f:
-                        data = pickle.load(f)
-                    X_train = data.get('X_train')
-                    if hasattr(X_train, 'shape'):
-                        input_features = int(X_train.shape[1])
-                    else:
-                        input_features = getattr(config, 'NUM_FEATURES', 78)
-                else:
-                    input_features = getattr(config, 'NUM_FEATURES', 78)
-        except Exception:
-            input_features = getattr(config, 'NUM_FEATURES', 78)
-
-        # num_classes
-        try:
-            class_names = self.baseline_results.get('class_names') or self.baseline_results.get('classification_report', {}).keys()
-            if isinstance(class_names, (list, tuple)):
-                num_classes = len(class_names)
-            else:
-                num_classes = int(self.baseline_results.get('num_classes', getattr(config, 'NUM_CLASSES', 15)))
-        except Exception:
-            num_classes = getattr(config, 'NUM_CLASSES', 15)
-
-        return input_features, num_classes
-
-    def _estimate_flops(self, model, input_features):
-        """Estimate FLOPS (rough MACs count) for Conv1d and Linear layers using layer params.
-        This is a structural estimate (weights ignored) and intended for relative comparison.
-        """
-        flops = 0
-        L = input_features
-        for m in model.modules():
-            if isinstance(m, nn.Conv1d):
-                k = m.kernel_size[0]
-                in_c = m.in_channels
-                out_c = m.out_channels
-                groups = m.groups if hasattr(m, 'groups') else 1
-                # assume output length ~= input length for padding='same' style
-                out_l = L
-                macs = k * (in_c / groups) * out_c * out_l
-                flops += macs * 2  # count multiply+add as two ops
-            elif isinstance(m, nn.Linear):
-                in_f = m.in_features
-                out_f = m.out_features
-                macs = in_f * out_f
-                flops += macs * 2
-        return flops
-
-    def _benchmark_inference(self, model, input_features, device, batch_size=1000, runs=20):
-        """Run a simple inference benchmark to estimate latency and throughput.
-        Returns ms_per_1000, throughput (conn/sec), and peak_memory_mb (if cuda).
-        """
-        model = model.to(device)
-        model.eval()
-        x = torch.randn(batch_size, input_features).to(device)
-
-        # Warm-up
-        with torch.no_grad():
-            for _ in range(5):
-                _ = model(x)
-
-        # Benchmark
-        times = []
-        torch.cuda.synchronize() if device == 'cuda' and torch.cuda.is_available() else None
-        with torch.no_grad():
-            for _ in range(runs):
-                start = time.time()
-                _ = model(x)
-                if device == 'cuda' and torch.cuda.is_available():
-                    torch.cuda.synchronize()
-                end = time.time()
-                times.append((end - start) * 1000.0)  # ms
-
-        avg_ms = np.mean(times)
-        ms_per_1000 = avg_ms * (1000.0 / batch_size)
-        throughput = (batch_size / (avg_ms / 1000.0))
-
-        peak_mem_mb = None
-        try:
-            if device == 'cuda' and torch.cuda.is_available():
-                peak = torch.cuda.max_memory_allocated(device)
-                peak_mem_mb = peak / (1024.0 * 1024.0)
-                torch.cuda.reset_peak_memory_stats(device)
-        except Exception:
-            peak_mem_mb = None
-
-        return ms_per_1000, throughput, peak_mem_mb
-
-    def plot_mcc_with_ci(self):
-        """Compute MCC for both models, bootstrap CI and plot with error bars."""
-        from sklearn.metrics import matthews_corrcoef
-
-        baseline_mcc = matthews_corrcoef(self.baseline_results['labels'], self.baseline_results['predictions'])
-        scs_id_mcc = matthews_corrcoef(self.scs_id_results['labels'], self.scs_id_results['predictions'])
-
-        # Bootstrap CI using per-sample MCC by resampling indices
-        def mcc_from_idx(idx, labels, preds):
-            return matthews_corrcoef(np.array(labels)[idx], np.array(preds)[idx])
-
-        labels_baseline = np.array(self.baseline_results['labels'])
-        preds_baseline = np.array(self.baseline_results['predictions'])
-        labels_scs = np.array(self.scs_id_results['labels'])
-        preds_scs = np.array(self.scs_id_results['predictions'])
-
-        # bootstrap
-        n_boot = 200
-        rng = np.random.default_rng(0)
-        boots_base = []
-        boots_scs = []
-        n = len(labels_baseline)
-        for _ in range(n_boot):
-            idx = rng.integers(0, n, n)
-            try:
-                boots_base.append(mcc_from_idx(idx, labels_baseline, preds_baseline))
-            except Exception:
-                boots_base.append(baseline_mcc)
-            try:
-                boots_scs.append(mcc_from_idx(idx, labels_scs, preds_scs))
-            except Exception:
-                boots_scs.append(scs_id_mcc)
-
-        lb, ub = np.percentile(boots_base, [2.5, 97.5])
-        ls, us = np.percentile(boots_scs, [2.5, 97.5])
-
-        # Plot
-        fig, ax = plt.subplots(figsize=(6, 4))
-        models = ['Baseline CNN', 'SCS-ID']
-        values = [baseline_mcc, scs_id_mcc]
-        errors = [[baseline_mcc - lb, scs_id_mcc - ls], [ub - baseline_mcc, us - scs_id_mcc]]
-        ax.bar(models, values, yerr=np.array([baseline_mcc - lb, scs_id_mcc - ls])[:, None].ravel(), capsize=8, color=['#4C72B0', '#DD8452'])
-        ax.set_ylabel('MCC')
-        ax.set_title('Matthews Correlation Coefficient (with 95% CI)')
-        plt.tight_layout()
-        out = Path(config.RESULTS_DIR) / 'mcc_comparison.png'
-        fig.savefig(out, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        print(f"   ✅ Saved MCC comparison plot: {out}")
-
-    def plot_flops_comparison(self):
-        """Estimate and plot FLOPS for both models."""
-        # instantiate models (structure-only) and estimate flops
-        input_features, num_classes = self._get_input_features_and_classes()
-
-        # Import model constructors
-        try:
-            from models.baseline_cnn import create_baseline_model
-            from models.scs_id_optimized import OptimizedSCSID
-            baseline_model = create_baseline_model(input_features, num_classes)
-            scs_model = OptimizedSCSID(input_features, num_classes)
-        except Exception as e:
-            print(f"   ⚠️ Error instantiating models for FLOPS estimation: {e}")
-            return
-
-        flops_base = self._estimate_flops(baseline_model, input_features)
-        flops_scs = self._estimate_flops(scs_model, input_features)
-
-        fig, ax = plt.subplots(figsize=(6, 4))
-        ax.bar(['Baseline CNN', 'SCS-ID'], [flops_base, flops_scs], color=['#7B9FE0', '#57C4B8'])
-        ax.set_ylabel('Estimated FLOPs (ops)')
-        ax.set_title('Estimated FLOPs per Inference')
-        plt.tight_layout()
-        out = Path(config.RESULTS_DIR) / 'flops_comparison.png'
-        fig.savefig(out, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        print(f"   ✅ Saved FLOPS comparison plot: {out}")
-
-    def plot_per_class_f1_heatmap(self):
-        """Plot per-class F1-score heatmap comparing both models."""
-        # Extract per-class f1 from classification reports
-        baseline_rep = self.baseline_results['classification_report']
-        scs_rep = self.scs_id_results['classification_report']
-
-        # Get class list
-        class_names = self.baseline_results.get('class_names') or list(baseline_rep.keys())
-        # Filter only class entries (ignore 'accuracy','macro avg', etc.)
-        classes = [c for c in class_names if c in baseline_rep and isinstance(baseline_rep[c], dict)]
-
-        f1_base = [baseline_rep[c].get('f1-score', 0.0) for c in classes]
-        f1_scs = [scs_rep.get(c, {}).get('f1-score', 0.0) for c in classes]
-
-        # Build dataframe
-        import pandas as pd
-        df = pd.DataFrame({'Baseline': f1_base, 'SCS-ID': f1_scs}, index=classes)
-
-        fig, ax = plt.subplots(figsize=(10, max(4, len(classes)*0.25)))
-        sns.heatmap(df, annot=True, fmt='.3f', cmap='YlGnBu', ax=ax)
-        ax.set_title('Per-Class F1-Score Comparison (Baseline vs SCS-ID)')
-        plt.tight_layout()
-        out = Path(config.RESULTS_DIR) / 'per_class_f1_heatmap.png'
-        fig.savefig(out, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        print(f"   ✅ Saved per-class F1 heatmap: {out}")
-
-    def plot_minority_class_analysis(self, support_threshold=100):
-        """Plot F1-scores for minority classes (support < threshold)."""
-        baseline_rep = self.baseline_results['classification_report']
-        scs_rep = self.scs_id_results['classification_report']
-
-        class_names = self.baseline_results.get('class_names') or list(baseline_rep.keys())
-        minority = []
-        for c in class_names:
-            if c in baseline_rep and isinstance(baseline_rep[c], dict):
-                support = baseline_rep[c].get('support', 0)
-                if support < support_threshold:
-                    minority.append(c)
-
-        if not minority:
-            print("   ⚠️ No minority classes found under threshold")
-            return
-
-        f1_base = [baseline_rep[c].get('f1-score', 0.0) for c in minority]
-        f1_scs = [scs_rep.get(c, {}).get('f1-score', 0.0) for c in minority]
-
-        x = np.arange(len(minority))
-        width = 0.35
-        fig, ax = plt.subplots(figsize=(max(8, len(minority)*0.5), 4))
-        bars1 = ax.bar(x - width/2, f1_base, width, label='Baseline')
-        bars2 = ax.bar(x + width/2, f1_scs, width, label='SCS-ID')
-        ax.set_xticks(x)
-        ax.set_xticklabels(minority, rotation=45, ha='right')
-        ax.set_ylabel('F1-Score')
-        ax.set_title(f'Minority Class Performance (support < {support_threshold})')
-        ax.legend()
-        plt.tight_layout()
-        out = Path(config.RESULTS_DIR) / f'minority_class_f1_support_lt_{support_threshold}.png'
-        fig.savefig(out, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        print(f"   ✅ Saved minority class performance plot: {out}")
-
-    def plot_real_time_dashboard(self):
-        """Run a simple inference benchmark and save a multi-panel real-time metrics dashboard."""
-        input_features, num_classes = self._get_input_features_and_classes()
-        device = config.DEVICE
-
-        # Instantiate models
-        try:
-            from models.baseline_cnn import create_baseline_model
-            from models.scs_id_optimized import OptimizedSCSID
-            baseline_model = create_baseline_model(input_features, num_classes)
-            scs_model = OptimizedSCSID(input_features, num_classes)
-        except Exception as e:
-            print(f"   ⚠️ Error creating models for real-time benchmark: {e}")
-            return
-
-        # Run benchmark
-        print("   🔬 Running inference benchmark (this may take a little time)...")
-        base_ms1000, base_throughput, base_mem = self._benchmark_inference(baseline_model, input_features, device)
-        scs_ms1000, scs_throughput, scs_mem = self._benchmark_inference(scs_model, input_features, device)
-
-        # Create dashboard
-        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-        # Latency
-        ax = axes[0,0]
-        ax.bar(['Baseline', 'SCS-ID'], [base_ms1000, scs_ms1000], color=['#8DA0CB', '#FC8D62'])
-        ax.set_ylabel('ms per 1000 connections')
-        ax.set_title('Inference Latency')
-
-        # Throughput
-        ax = axes[0,1]
-        ax.bar(['Baseline', 'SCS-ID'], [base_throughput, scs_throughput], color=['#66C2A5', '#FFD92F'])
-        ax.set_ylabel('Connections / sec')
-        ax.set_title('Throughput')
-
-        # Memory
-        ax = axes[1,0]
-        mem_vals = [base_mem or 0.0, scs_mem or 0.0]
-        ax.bar(['Baseline', 'SCS-ID'], mem_vals, color=['#E78AC3', '#A6D854'])
-        ax.set_ylabel('Peak Memory (MB)')
-        ax.set_title('Peak GPU Memory during Inference (if available)')
-
-        # Empty / notes
-        ax = axes[1,1]
-        ax.axis('off')
-        note = f"Device: {device}\nBaseline ms/1000: {base_ms1000:.2f}\nSCS-ID ms/1000: {scs_ms1000:.2f}\nBaseline throughput: {base_throughput:.1f}/s\nSCS-ID throughput: {scs_throughput:.1f}/s"
-        ax.text(0.1, 0.5, note, fontsize=10, family='monospace')
-
-        plt.tight_layout()
-        out = Path(config.RESULTS_DIR) / 'real_time_dashboard.png'
-        fig.savefig(out, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        print(f"   ✅ Saved real-time performance dashboard: {out}")
-    
     def generate_comparison_report(self):
         """Generate a comprehensive comparison report"""
         print("\n📋 Generating comparison report...")
@@ -1658,6 +1113,79 @@ Statistical Significance: {'CONFIRMED' if test_results['significance_test']['sig
         
         print(f"   ✅ Report generated: {report_path}")
         
+    def run_statistical_analysis(self):
+        """
+        Run comprehensive statistical analysis and generate report
+        """
+        print("📊 Running statistical analysis...")
+        
+        # Run all statistical tests
+        self.statistical_tests['shapiro_wilk'] = self.shapiro_wilk_test()
+        self.statistical_tests['paired_t_test'] = self.paired_t_test()
+        self.statistical_tests['wilcoxon_test'] = self.wilcoxon_test()
+        self.statistical_tests['cohens_d'] = self.cohens_d()
+        self.statistical_tests['bootstrap_ci'] = self.bootstrap_confidence_intervals()
+        
+        # Generate report
+        report_path = Path(config.RESULTS_DIR) / "statistical_analysis_report.txt"
+        self._generate_statistical_report(report_path)
+        
+        print(f"✅ Statistical analysis complete. Report saved to: {report_path}")
+        
+    def _generate_statistical_report(self, report_path):
+        """Generate comprehensive statistical analysis report"""
+        with open(report_path, 'w') as f:
+            f.write("Statistical Analysis Report\n")
+            f.write("=========================\n\n")
+            
+            # Normality Test
+            f.write("1. Normality Test (Shapiro-Wilk)\n")
+            f.write("---------------------------------\n")
+            sw_test = self.statistical_tests['shapiro_wilk']
+            f.write(f"Statistic: {sw_test['statistic']:.4f}\n")
+            f.write(f"P-value: {sw_test['p_value']:.4f}\n")
+            f.write(f"Interpretation: {sw_test['interpretation']}\n\n")
+            
+            # Paired T-test
+            f.write("2. Paired T-test Results\n")
+            f.write("------------------------\n")
+            t_test = self.statistical_tests['paired_t_test']
+            f.write(f"T-statistic: {t_test['t_statistic']:.4f}\n")
+            f.write(f"P-value: {t_test['p_value']:.4f}\n")
+            f.write(f"Interpretation: {t_test['interpretation']}\n\n")
+            
+            # Wilcoxon Test
+            f.write("3. Wilcoxon Signed-Rank Test\n")
+            f.write("-----------------------------\n")
+            wilcoxon = self.statistical_tests['wilcoxon_test']
+            f.write(f"Statistic: {wilcoxon['statistic']:.4f}\n")
+            f.write(f"P-value: {wilcoxon['p_value']:.4f}\n")
+            f.write(f"Interpretation: {wilcoxon['interpretation']}\n\n")
+            
+            # Effect Size
+            f.write("4. Effect Size (Cohen's d)\n")
+            f.write("-------------------------\n")
+            cohens = self.statistical_tests['cohens_d']
+            f.write(f"Effect size: {cohens['effect_size']:.4f}\n")
+            f.write(f"Interpretation: {cohens['interpretation']}\n\n")
+            
+            # Bootstrap Confidence Intervals
+            f.write("5. Bootstrap Confidence Intervals (95%)\n")
+            f.write("-------------------------------------\n")
+            bootstrap = self.statistical_tests['bootstrap_ci']
+            
+            f.write("Baseline Model:\n")
+            f.write(f"  Accuracy: {bootstrap['baseline']['accuracy']['mean']:.4f} ")
+            f.write(f"({bootstrap['baseline']['accuracy']['ci_lower']:.4f} - {bootstrap['baseline']['accuracy']['ci_upper']:.4f})\n")
+            f.write(f"  F1-Score: {bootstrap['baseline']['f1_score']['mean']:.4f} ")
+            f.write(f"({bootstrap['baseline']['f1_score']['ci_lower']:.4f} - {bootstrap['baseline']['f1_score']['ci_upper']:.4f})\n\n")
+            
+            f.write("SCS-ID Model:\n")
+            f.write(f"  Accuracy: {bootstrap['scs_id']['accuracy']['mean']:.4f} ")
+            f.write(f"({bootstrap['scs_id']['accuracy']['ci_lower']:.4f} - {bootstrap['scs_id']['accuracy']['ci_upper']:.4f})\n")
+            f.write(f"  F1-Score: {bootstrap['scs_id']['f1_score']['mean']:.4f} ")
+            f.write(f"({bootstrap['scs_id']['f1_score']['ci_lower']:.4f} - {bootstrap['scs_id']['f1_score']['ci_upper']:.4f})\n")
+            
     def run_complete_comparison(self):
         """Run the complete model comparison pipeline"""
         print("🚀 Starting Complete Model Comparison")
@@ -1674,7 +1202,10 @@ Statistical Significance: {'CONFIRMED' if test_results['significance_test']['sig
             # NEW: Add threshold optimization comparison
             threshold_results = self.compare_threshold_optimization()
             
-            # Statistical analysis
+            # Run comprehensive statistical analysis
+            self.run_statistical_analysis()
+            
+            # Run statistical tests (includes visualization)
             self.perform_statistical_tests()
             
             # Create visualizations
@@ -1713,9 +1244,9 @@ def main():
     results = comparator.run_complete_comparison()
     
     if results:
-        print("\n🎉 Model comparison completed successfully!")
+        print("\n[SUCCESS] Model comparison completed successfully!")
     else:
-        print("\n❌ Model comparison failed. Check the error messages above.")
+        print("\n[ERROR] Model comparison failed. Check the error messages above.")
 
 if __name__ == "__main__":
     main()
