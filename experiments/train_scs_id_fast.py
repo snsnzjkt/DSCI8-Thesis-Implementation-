@@ -1,14 +1,19 @@
 # experiments/train_scs_id_fast.py
 """
-SCS-ID Training with Pre-Selected DeepSeek RL Features
-This script loads pre-computed DeepSeek RL features for fast training
+SCS-ID Training with Pre-Selected DeepSeek RL Features and Model Optimization
+This script implements:
+1. Pre-computed DeepSeek RL features for fast training
+2. Progressive model pruning during training
+3. Quantization-aware training
+4. Threshold optimization for FPR reduction
+5. Advanced statistical testing for hypothesis validation
 
 Prerequisites:
 1. Run: python experiments/deepseek_feature_selection_only.py (30-60 min)
-2. Then: python experiments/train_scs_id_fast.py (5-15 min)
+2. Then: python experiments/train_scs_id_fast.py (10-20 min)
 
-This approach separates the time-intensive DeepSeek RL from SCS-ID training,
-allowing for faster iteration when tuning model hyperparameters.
+This approach combines feature selection with model optimization
+to achieve both high performance and computational efficiency.
 """
 import sys
 from pathlib import Path
@@ -28,8 +33,20 @@ import os
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix, classification_report
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+from models.model_optimizer import ModelOptimizer
+from scipy import stats
+
+# Configuration for model optimization
+optimization_config = {
+    'prune_amount': 0.5,  # 50% channel pruning
+    'min_channels': 4,    # Minimum channels to maintain
+    'quantize': True,     # Enable quantization
+    'progressive_pruning': True,  # Enable progressive pruning during training
+    'prune_frequency': 5  # Prune every 5 epochs
+}
 from config import config
-from models.scs_id import create_scs_id_model, apply_structured_pruning, apply_quantization, get_model_size_mb
+from models.scs_id_optimized import OptimizedSCSID as create_scs_id_model
+from models.model_optimizer import apply_structured_pruning, apply_quantization, get_model_size_mb
 
 if torch.cuda.is_available():
     torch.backends.cudnn.benchmark = True
@@ -156,10 +173,17 @@ class FastSCSIDTrainer:
         y_true, y_pred = [], []
         
         with torch.no_grad():
+            # Determine the device where the model's parameters live
+            try:
+                first_param = next(model.parameters())
+                model_device = first_param.device
+            except StopIteration:
+                # Model has no parameters; fall back to trainer device
+                model_device = torch.device(self.device)
+
             for data, target in loader:
-                # Handle both CPU and GPU cases
-                if self.device.type == 'cuda' and not isinstance(model, torch.ao.quantization.quantize_dynamic.QuantizedModel):
-                    data, target = data.to(self.device, non_blocking=True), target.to(self.device, non_blocking=True)
+                # Move inputs to the same device as the model to avoid device mismatch
+                data, target = data.to(model_device, non_blocking=True), target.to(model_device, non_blocking=True)
                 data = data.unsqueeze(1).unsqueeze(-1)
                 output = model(data)
                 pred = output.argmax(dim=1)
@@ -235,17 +259,23 @@ class FastSCSIDTrainer:
             
             scheduler.step(val_acc)
             
+            # Check for improvement
             if val_acc > self.best_val_acc:
                 self.best_val_acc = val_acc
                 torch.save(self.model.state_dict(), f"{config.RESULTS_DIR}/scs_id_best_model_fast.pth")
                 patience_counter = 0
-                print(f"   ✓ Best: {val_acc:.2f}%")
+                print(f"   ✓ New best validation accuracy: {val_acc:.2f}%")
+                print(f"   ✓ Model saved")
             else:
                 patience_counter += 1
-            
-            if patience_counter >= patience:
-                print(f"   Early stopping")
-                break
+                remaining_patience = 20 - patience_counter  # Set to 20 epochs patience
+                print(f"   No improvement for {patience_counter} epochs (stopping in {remaining_patience} epochs)")
+                
+                if patience_counter >= 20:  # Check for 20 epochs without improvement
+                    print(f"\n⚠️ Early stopping triggered after {epoch+1} epochs")
+                    print(f"   No improvement in validation accuracy for 20 epochs")
+                    print(f"   Best validation accuracy: {self.best_val_acc:.2f}%")
+                    break
         
         training_time = time.time() - start_time
         
@@ -308,7 +338,16 @@ class FastSCSIDTrainer:
         total_compression = (original_size - final_size) / original_size * 100
         
         # Generate classification report
-        clf_report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
+        # Get unique classes that actually appear in the data
+        unique_classes = sorted(set(y_true))
+        actual_class_names = [class_names[i] for i in unique_classes]
+        
+        clf_report = classification_report(
+            y_true, y_pred, 
+            target_names=actual_class_names,
+            labels=unique_classes,
+            output_dict=True
+        )
         
         # Save complete results
         results = {

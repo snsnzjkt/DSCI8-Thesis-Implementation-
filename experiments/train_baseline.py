@@ -325,9 +325,14 @@ class BaselineTrainer:
         
         # Classification report
         print("\n📋 Classification Report:")
+        # Get unique classes that actually appear in the data
+        unique_classes = sorted(set(all_labels))
+        actual_class_names = [class_names[i] for i in unique_classes]
+        
         report = classification_report(
             all_labels, all_predictions, 
-            target_names=class_names,
+            target_names=actual_class_names,
+            labels=unique_classes,
             output_dict=True
         )
         

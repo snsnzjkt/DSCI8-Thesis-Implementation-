@@ -384,8 +384,12 @@ class OptimizedDeepSeekRL:
     """
     
     def __init__(self, max_features=42, sample_ratio=0.3, use_cache=True):
+        # Historically this implementation targeted the 78-feature CIC-IDS dataset.
+        # Allow using fewer features (preprocessing may drop constants). Only warn
+        # if requested max_features exceeds 78, but do not raise here since the
+        # actual dataset feature dimension is validated at fit-time.
         if max_features > 78:
-            raise ValueError(f"max_features cannot exceed 78 (got {max_features})")
+            print(f"Warning: max_features ({max_features}) exceeds typical 78-feature dataset. Proceeding.")
         
         self.max_features = max_features
         self.sample_ratio = sample_ratio
@@ -422,8 +426,10 @@ class OptimizedDeepSeekRL:
             target_network_update: Update target network every N episodes
             verbose: Print progress
         """
-        if X_train.shape[1] != 78:
-            raise ValueError(f"Expected 78 features but got {X_train.shape[1]}")
+        # Validate that the input has at least as many features as the target selection
+        # (it is fine for preprocessing to reduce the original 78 features).
+        if X_train.shape[1] < self.max_features:
+            raise ValueError(f"Expected at least {self.max_features} features but got {X_train.shape[1]}")
         
         print(f"\n{'='*70}")
         print(f"🚀 OPTIMIZED DeepSeek RL Feature Selection")

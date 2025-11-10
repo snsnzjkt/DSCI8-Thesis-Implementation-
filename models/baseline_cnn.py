@@ -25,6 +25,10 @@ class BaselineCNN(nn.Module):
         self.input_features = input_features
         self.num_classes = num_classes
         
+        # Track model metrics
+        from models.model_metrics import ModelMetricsTracker
+        self.metrics_tracker = ModelMetricsTracker()
+        
         # Since we have 1D features, we'll use 1D convolutions
         # Following Ayeni et al. approach with 3 conv layers
         
@@ -76,9 +80,7 @@ class BaselineCNN(nn.Module):
         Returns:
             Output tensor of shape (batch_size, num_classes)
         """
-        # Reshape for 1D convolution: (batch_size, 1, features)
-        x = x.unsqueeze(1)
-        
+        # Input is already (batch_size, 1, features)
         # First convolutional block
         x = self.conv1(x)
         x = self.batch_norm1(x)
