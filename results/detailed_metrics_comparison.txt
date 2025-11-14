@@ -1,0 +1,19 @@
+DETAILED METRICS COMPARISON
+========================================
+
+ACCURACY METRICS:
+Baseline Accuracy: 0.994948 (99.49%)
+SCS-ID Accuracy: 0.997391 (99.74%)
+Improvement: +0.002442 (+0.245%)
+
+F1-SCORE METRICS:
+Baseline F1: 0.994641
+SCS-ID F1: 0.997327
+Improvement: +0.002686 (+0.270%)
+
+TRAINING TIME METRICS:
+Baseline Time: 10894.89s
+SCS-ID Time: 27839.55s
+Ratio: 2.56x
+
+Report generated: 2025-11-11 00:44:23

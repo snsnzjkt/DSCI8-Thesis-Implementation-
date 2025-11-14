@@ -1,0 +1,78 @@
+PER-CLASS PERFORMANCE ANALYSIS REPORT
+==================================================
+CIC-IDS2017 Dataset Analysis - 15 Classes
+
+1. EXECUTIVE SUMMARY
+--------------------
+Average F1-Score Improvement: 0.0915
+Classes with Improved Performance: 13/15 (86.7%)
+Best F1 Improvement: 0.6861 (Web Attack - Brute Force)
+Worst F1 Change: 0.0000 (Heartbleed)
+
+2. DETAILED PER-CLASS RESULTS
+------------------------------
+Class                     Baseline F1  SCS-ID F1    Improvement  Support   
+--------------------------------------------------------------------------------
+Web Attack - Brute Force  0.1068       0.7929       0.6861       452       
+Infiltration              0.0000       0.4286       0.4286       11        
+DoS Slowhttptest          0.9159       0.9852       0.0694       1650      
+DoS slowloris             0.9479       0.9917       0.0438       1739      
+Bot                       0.5997       0.6388       0.0391       590       
+SSH-Patator               0.9414       0.9772       0.0358       1769      
+Web Attack - XSS          0.0000       0.0302       0.0302       196       
+DoS GoldenEye             0.9761       0.9917       0.0157       3088      
+FTP-Patator               0.9865       0.9985       0.0120       2381      
+DoS Hulk                  0.9876       0.9928       0.0053       69322     
+PortScan                  0.9942       0.9966       0.0024       47679     
+DDoS                      0.9975       0.9996       0.0021       38408     
+BENIGN                    0.9970       0.9986       0.0015       681929    
+Heartbleed                0.0000       0.0000       0.0000       3         
+Web Attack - Sql Injecti  0.0000       0.0000       0.0000       6         
+
+3. ATTACK DIFFICULTY RANKING
+----------------------------
+Ranking based on average F1-score (lower = more difficult)
+
+ 1. Web Attack - Sql Injection     (Avg F1: 0.0000)
+ 2. Heartbleed                     (Avg F1: 0.0000)
+ 3. Web Attack - XSS               (Avg F1: 0.0151)
+ 4. Infiltration                   (Avg F1: 0.2143)
+ 5. Web Attack - Brute Force       (Avg F1: 0.4498)
+ 6. Bot                            (Avg F1: 0.6193)
+ 7. DoS Slowhttptest               (Avg F1: 0.9506)
+ 8. SSH-Patator                    (Avg F1: 0.9593)
+ 9. DoS slowloris                  (Avg F1: 0.9698)
+10. DoS GoldenEye                  (Avg F1: 0.9839)
+
+4. TOP MISCLASSIFICATION PATTERNS
+----------------------------------
+Baseline CNN:
+1. BENIGN → DoS Hulk: 1191 (0.14%)
+2. DoS Hulk → BENIGN: 465 (0.05%)
+3. BENIGN → PortScan: 441 (0.05%)
+4. Web Attack - Brute Force → BENIGN: 387 (0.05%)
+5. BENIGN → Bot: 288 (0.03%)
+
+SCS-ID:
+1. BENIGN → DoS Hulk: 826 (0.10%)
+2. BENIGN → PortScan: 300 (0.04%)
+3. BENIGN → Bot: 290 (0.03%)
+4. Web Attack - XSS → Web Attack - Brute Force: 180 (0.02%)
+5. Bot → BENIGN: 177 (0.02%)
+
+5. CLASS-SPECIFIC INSIGHTS
+--------------------------
+Most Improved Classes:
+• Web Attack - Brute Force: +0.6861 F1 improvement
+• Infiltration: +0.4286 F1 improvement
+• DoS Slowhttptest: +0.0694 F1 improvement
+
+Classes Needing Attention (F1 < 0.9):
+• Bot: F1 = 0.6388
+• Heartbleed: F1 = 0.0000
+• Infiltration: F1 = 0.4286
+• Web Attack - Brute Force: F1 = 0.7929
+• Web Attack - Sql Injection: F1 = 0.0000
+• Web Attack - XSS: F1 = 0.0302
+
+Report generated: 2025-11-10 23:54:08
