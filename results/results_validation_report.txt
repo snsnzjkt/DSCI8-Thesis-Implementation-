@@ -1,0 +1,30 @@
+RESULTS VALIDATION REPORT
+==================================================
+Validation of actual model results and statistical claims
+
+1. DATA SOURCE VALIDATION
+-------------------------
+✅ Baseline results loaded from: baseline_results.pkl
+✅ SCS-ID results loaded from: scs_id_optimized_results.pkl
+✅ All metrics extracted from actual trained models
+
+2. ACTUAL PERFORMANCE METRICS
+------------------------------
+BASELINE CNN:
+  accuracy: 0.994948
+
+SCS-ID:
+  accuracy: 0.997391
+
+3. PERFORMANCE IMPROVEMENTS (ACTUAL)
+-------------------------------------
+ACCURACY: 0.994948 → 0.997391 (+0.002442, +0.25%)
+
+4. STATISTICAL VALIDATION
+-------------------------
+Wilcoxon Test Statistic: 0.0
+P-value: 0.000655
+Statistically Significant: YES
+Effect Size (Cohen's d): 0.2165 (Small)
+
+Report generated: 2025-11-11 00:38:42

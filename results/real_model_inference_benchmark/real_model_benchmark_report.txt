@@ -1,0 +1,46 @@
+REAL MODEL INFERENCE BENCHMARK REPORT
+==================================================
+Benchmarking using actual trained model .pth files
+Device: cuda
+Benchmark Date: 2025-11-11 00:32:56
+
+MODEL INFORMATION
+-----------------
+Baseline Model: 41,189 parameters
+SCS-ID Model: 21,079 parameters
+Parameter Reduction: 48.8%
+
+PERFORMANCE SUMMARY
+-------------------
+Average Throughput Improvement: -69.6%
+Best Throughput Improvement: -53.4%
+Optimal Batch Size: 256
+Target Achievement (>300%): NO
+
+DETAILED RESULTS
+----------------
+Batch Size   Model        Throughput      Latency (ms)   
+------------------------------------------------------------
+1            Baseline CNN 662             1.5100         
+1            SCS-ID       159             6.2881         
+8            Baseline CNN 6772            0.1477         
+8            SCS-ID       1329            0.7522         
+16           Baseline CNN 13428           0.0745         
+16           SCS-ID       2922            0.3422         
+32           Baseline CNN 20045           0.0499         
+32           SCS-ID       6215            0.1609         
+64           Baseline CNN 52400           0.0191         
+64           SCS-ID       12297           0.0813         
+128          Baseline CNN 103552          0.0097         
+128          SCS-ID       23054           0.0434         
+256          Baseline CNN 108071          0.0093         
+256          SCS-ID       50343           0.0199         
+512          Baseline CNN 357185          0.0028         
+512          SCS-ID       101649          0.0098         
+1024         Baseline CNN 353509          0.0028         
+1024         SCS-ID       156132          0.0064         
+2048         Baseline CNN 314563          0.0032         
+2048         SCS-ID       133131          0.0075         
+
+Based on actual trained models from .pth files
+Report generated: 2025-11-11 00:32:56
