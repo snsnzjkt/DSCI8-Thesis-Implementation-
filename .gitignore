@@ -7,6 +7,9 @@ venv/
 *.dll
 *.lib
 
+# Large data files (over GitHub LFS 2GB limit)
+data/processed/train_data.csv
+
 # Allow specific results directories
 !results/baseline/
 !results/scs_id/
