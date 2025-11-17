@@ -1,9 +1,11 @@
 ﻿__pycache__/
 *.pyc
-data/*.csv
-data/*.pkl
 *.log
 .ipynb_checkpoints/
+.venv/
+venv/
+*.dll
+*.lib
 
 # Allow specific results directories
 !results/baseline/
