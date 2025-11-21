@@ -12,7 +12,6 @@
 - **SqueezeNet efficiency** for reduced computational overhead
 - **ConvSeek pattern recognition** for enhanced feature extraction  
 - **DeepSeek reinforcement learning** for intelligent feature selection
-- **Hybrid LIME-SHAP explainability** for transparent security decisions
 
 ### 🎓 Academic Context
 **Authors**: Alba, Jomell Prinz E.; Dy, Gian Raphael C.; Esguerra, Edrine Frances A.; Gulifardo, Rayna Eliz P.  
@@ -23,8 +22,7 @@
 
 1. **💡 Real-time Performance**: Reduce computational overhead by >50% through optimized architecture
 2. **🎯 Enhanced Accuracy**: Maintain high detection accuracy while reducing false positive rates by >20%
-3. **🔍 Explainable Security**: Provide transparent, interpretable security decisions via hybrid LIME-SHAP framework
-4. **⚡ Efficient Deployment**: Enable lightweight deployment in resource-constrained campus environments
+3. **⚡ Efficient Deployment**: Enable lightweight deployment in resource-constrained campus environments
 
 ## 🏗️ System Architecture
 
@@ -37,8 +35,6 @@
 🔥 SCS-ID CNN Architecture (Fire modules + ConvSeek)
          ⬇
 ⚡ Model Compression (Pruning + Quantization)
-         ⬇
-🔍 Hybrid LIME-SHAP Explainability
          ⬇
 📈 Enhanced Intrusion Detection
 ```
@@ -102,7 +98,7 @@ DSCI8-Thesis-Implementation-/
 │       ├── Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv
 │       ├── Friday-WorkingHours-Morning.pcap_ISCX.csv
 │       ├── Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv
-│       └── Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv
+│       ├── Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv
 │
 ├── 🤖 models/                          # 🧠 Neural network architectures
 │   ├── baseline_cnn.py                 # 📊 Ayeni et al. baseline CNN
@@ -446,7 +442,6 @@ DETAILED_LOGGING = True        # 📝 Verbose execution logs
 - Feature Selection: DeepSeek RL (42 optimal features)
 - Architecture: Fire modules + ConvSeek blocks
 - Optimization: Pruning + Quantization
-- Explainability: LIME-SHAP integration
 
 ## 📈 Evaluation Metrics
 
@@ -745,5 +740,4 @@ python experiments/compare_models.py
 ### 🔄 Next Steps
 
 - **Performance Benchmarking**: Conduct real-world testing on campus network traffic.
-- **Explainability Framework**: Finalize hybrid LIME-SHAP integration.
 - **Thesis Documentation**: Prepare detailed write-up for submission.
