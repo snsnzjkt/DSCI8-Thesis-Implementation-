@@ -10,6 +10,7 @@ venv/
 # Exclude model files and processed data
 *.pth
 *.pkl
+*.pdf
 
 # Exclude raw dataset files
 data/raw/

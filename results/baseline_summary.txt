@@ -1,0 +1,21 @@
+Baseline CNN Model Results Summary
+========================================
+
+Test Accuracy: 0.8871 (88.71%)
+F1-Score: 0.9237
+Training Time: 1725.71 seconds
+Model Parameters: 41,189
+Classes: 15
+Device: cuda
+
+Configuration:
+  Batch Size: 64
+  Learning Rate: 0.0001
+  Epochs: 25
+
+Threshold Optimization Results:
+  Optimal Threshold: 0.9956
+  Original FPR: 0.1332 (13.32%)
+  Optimized FPR: 0.0100 (1.00%)
+  FPR Reduction: 92.49%
+  Optimized TPR: 0.8524 (85.24%)

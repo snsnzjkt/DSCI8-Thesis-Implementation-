@@ -1,0 +1,103 @@
+================================================================================
+COMPREHENSIVE MODEL COMPARISON ANALYSIS SUMMARY
+SCS-ID vs Baseline CNN (Ayeni et al.)
+================================================================================
+Analysis Date: 2025-12-02 09:26:08
+Dataset: CIC-IDS2017 Campus Network Traffic
+Test Samples: 756,506
+Attack Types Analyzed: 15
+
+EXECUTIVE SUMMARY:
+====================
+This analysis compares the proposed SCS-ID (Squeezed ConvSeek for Intrusion
+Detection) model against Ayeni et al.'s baseline CNN model across two main
+hypotheses: computational efficiency improvements and detection performance
+differences in campus network environments.
+
+KEY FINDINGS:
+---------------
+1. COMPUTATIONAL EFFICIENCY (Hypothesis 1):
+   • Parameter Reduction: 46.8% fewer parameters
+   • Memory Reduction: -0.0% less memory usage
+   • Latency Improvement: 78.6% faster inference
+   • Statistical Significance: 2/3 metrics significant
+   • Conclusion: SUPPORTED
+
+2. DETECTION PERFORMANCE (Hypothesis 2):
+   • Overall F1-Score: Baseline 0.4743 vs SCS-ID 0.5317
+   • Overall Accuracy: Baseline 0.8871 vs SCS-ID 0.9118
+   • False Positive Rate: Baseline 0.0081 vs SCS-ID 0.0063
+   • Per-Attack Significance: 20/60 tests significant
+   • Conclusion: SUPPORTED
+
+MODEL SPECIFICATIONS:
+----------------------
+Baseline CNN (Ayeni et al.):
+  • Parameters: 41,189
+  • Memory Usage: 1193.11 MB
+  • Model Size: 0.16 MB
+  • Inference Latency: 0.1080 ms/connection
+
+SCS-ID (Proposed):
+  • Parameters: 21,919
+  • Memory Usage: 1193.34 MB
+  • Model Size: 0.08 MB
+  • Inference Latency: 0.0231 ms/connection
+
+STATISTICAL METHODOLOGY:
+-------------------------
+• Significance Level: alpha = 0.05
+• Bootstrap Sampling: n = 30 samples per comparison
+• Normality Testing: Shapiro-Wilk test
+• Parametric Test: Paired t-test (when data is normal)
+• Non-parametric Test: Wilcoxon signed-rank test (when non-normal)
+• Effect Size: Cohen's d for paired samples
+
+DETAILED PERFORMANCE COMPARISON:
+-----------------------------------
+Metric                         | Baseline     | SCS-ID       | Improvement 
+--------------------------------------------------------------------------------
+Accuracy                       | 0.887086     | 0.911829     | +2.79%      
+Precision (Macro)              | 0.412704     | 0.486176     | +17.80%     
+Recall (Macro)                 | 0.816305     | 0.823408     | +0.87%      
+F1-Score (Macro)               | 0.474260     | 0.531666     | +12.10%     
+False Positive Rate            | 0.008065     | 0.006298     | +21.91%     
+False Alarm Rate               | 0.112914     | 0.088171     | +21.91%     
+AUC-ROC                        | 0.926953     | 0.965502     | +4.16%      
+Matthews Corr. Coeff           | 0.344332     | 0.366033     | +6.30%      
+
+COMPUTATIONAL IMPROVEMENTS:
+----------------------------
+Metric                    | Baseline        | SCS-ID          | Reduction   
+---------------------------------------------------------------------------
+Parameters                | 41,189          | 21,919          | 46.8%       
+Memory (MB)               | 1193.11         | 1193.34         | -0.0%       
+Latency (ms)              | 0.1080          | 0.0231          | 78.6%       
+
+RECOMMENDATIONS:
+-----------------
+1. COMPUTATIONAL EFFICIENCY: The SCS-ID model is recommended for
+   deployment in resource-constrained campus environments due to
+   significant improvements in computational efficiency.
+
+2. DETECTION PERFORMANCE: The SCS-ID model shows sufficient
+   performance differences to warrant consideration for deployment
+   in campus network intrusion detection systems.
+
+LIMITATIONS:
+-------------
+• Analysis based on CIC-IDS2017 dataset specific to campus networks
+• Bootstrap sampling used to generate statistical comparisons
+• Results may not generalize to other network environments
+• Model performance may vary with different hyperparameter settings
+
+FUTURE WORK:
+-------------
+• Validation on additional campus network datasets
+• Real-time deployment testing in actual campus environments
+• Cross-validation with other intrusion detection datasets
+• Investigation of model interpretability and explainability
+
+================================================================================
+END OF COMPREHENSIVE ANALYSIS SUMMARY
+================================================================================

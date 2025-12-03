@@ -1,0 +1,222 @@
+================================================================================
+HYPOTHESIS 2: DETECTION PERFORMANCE ANALYSIS REPORT
+================================================================================
+Generated on: 2025-12-02 09:26:08
+
+HYPOTHESIS STATEMENT:
+----------------------------------------
+H0: There was no statistically significant difference in detection
+    performance (accuracy, F1-score, and false positive rate) when
+    using the SCS-ID architecture compared to Ayeni's CNN model
+    while operating under various campus network traffic conditions.
+
+H1: There was a statistically significant difference in detection
+    performance (accuracy, F1-score, and false positive rate) when
+    using the SCS-ID architecture compared to Ayeni's CNN model.
+
+OVERALL DETECTION PERFORMANCE METRICS:
+==================================================
+
+CLASSIFICATION PERFORMANCE METRICS:
+----------------------------------------
+Metric                    | Baseline CNN | SCS-ID    | Difference
+-----------------------------------------------------------------
+Accuracy                  | 0.887086   | 0.911829 | +0.024743
+Precision (Macro Avg)     | 0.412704   | 0.486176 | +0.073473
+Recall (Macro Avg)        | 0.816305   | 0.823408 | +0.007103
+F1-Score (Macro Avg)      | 0.474260   | 0.531666 | +0.057405
+False Positive Rate       | 0.008065   | 0.006298 | -0.001767
+False Alarm Rate          | 0.112914   | 0.088171 | -0.024743
+AUC-ROC                   | 0.926953   | 0.965502 | +0.038549
+Matthews Correlation Coeff| 0.344332   | 0.366033 | +0.021701
+
+PER-ATTACK TYPE PERFORMANCE ANALYSIS:
+==================================================
+
+PRECISION BY ATTACK TYPE:
+--------------------------------------------------
+Attack Type               | Baseline   | SCS-ID     | Diff       | Significant
+--------------------------------------------------------------------------------
+BENIGN                    | 0.999881   | 0.999651   | -0.000230  | ✗ No
+DDoS                      | 0.022031   | 0.024385   | +0.002355  | ✗ No
+DoS GoldenEye             | 0.964862   | 0.972388   | +0.007526  | ✗ No
+DoS Hulk                  | 0.501491   | 0.666813   | +0.165323  | ✓ Yes
+DoS Slowhttptest          | 0.901605   | 0.883408   | -0.018197  | ✓ Yes
+DoS slowloris             | 0.491997   | 0.620690   | +0.128692  | ✓ Yes
+FTP-Patator               | 0.465286   | 0.727017   | +0.261731  | ✓ Yes
+SSH-Patator               | 0.384849   | 0.572768   | +0.187919  | ✓ Yes
+Web Attack - Brute Force  | 0.000000   | 0.000000   | +0.000000  | ✗ No
+Web Attack - Sql Injection | 0.000685   | 0.001095   | +0.000410  | ✗ No
+Web Attack - XSS          | 0.707233   | 0.974554   | +0.267321  | ✓ Yes
+Infiltration              | 0.668684   | 0.782108   | +0.113424  | ✓ Yes
+Bot                       | 0.064327   | 0.065566   | +0.001238  | ✗ No
+PortScan                  | 0.000513   | 0.001019   | +0.000506  | ✗ No
+Heartbleed                | 0.017110   | 0.001184   | -0.015926  | ✓ Yes
+
+RECALL BY ATTACK TYPE:
+--------------------------------------------------
+Attack Type               | Baseline   | SCS-ID     | Diff       | Significant
+--------------------------------------------------------------------------------
+BENIGN                    | 0.866810   | 0.896414   | +0.029604  | ✗ No
+DDoS                      | 0.998294   | 0.998294   | +0.000000  | ✗ No
+DoS GoldenEye             | 0.998828   | 0.998568   | -0.000260  | ✗ No
+DoS Hulk                  | 0.981205   | 0.981854   | +0.000648  | ✗ No
+DoS Slowhttptest          | 0.984958   | 0.983955   | -0.001003  | ✗ No
+DoS slowloris             | 0.980230   | 0.987245   | +0.007015  | ✗ No
+FTP-Patator               | 0.987616   | 0.959752   | -0.027864  | ✗ No
+SSH-Patator               | 0.996067   | 0.994944   | -0.001124  | ✗ No
+Web Attack - Brute Force  | 0.000000   | 0.000000   | +0.000000  | ✗ No
+Web Attack - Sql Injection | 0.636364   | 0.636364   | +0.000000  | ✗ No
+Web Attack - XSS          | 0.991491   | 0.991712   | +0.000221  | ✗ No
+Infiltration              | 0.915114   | 0.914079   | -0.001035  | ✗ No
+Bot                       | 0.099773   | 0.936508   | +0.836735  | ✓ Yes
+PortScan                  | 0.833333   | 1.000000   | +0.166667  | ✓ Yes
+Heartbleed                | 0.974490   | 0.071429   | -0.903061  | ✓ Yes
+
+F1-SCORE BY ATTACK TYPE:
+--------------------------------------------------
+Attack Type               | Baseline   | SCS-ID     | Diff       | Significant
+--------------------------------------------------------------------------------
+BENIGN                    | 0.928602   | 0.945222   | +0.016619  | ✗ No
+DDoS                      | 0.043110   | 0.047607   | +0.004498  | ✗ No
+DoS GoldenEye             | 0.981551   | 0.985304   | +0.003753  | ✗ No
+DoS Hulk                  | 0.663744   | 0.794233   | +0.130489  | ✓ Yes
+DoS Slowhttptest          | 0.941440   | 0.930975   | -0.010465  | ✗ No
+DoS slowloris             | 0.655158   | 0.762186   | +0.107028  | ✓ Yes
+FTP-Patator               | 0.632560   | 0.827329   | +0.194769  | ✓ Yes
+SSH-Patator               | 0.555190   | 0.727011   | +0.171821  | ✓ Yes
+Web Attack - Brute Force  | 0.000000   | 0.000000   | +0.000000  | ✗ No
+Web Attack - Sql Injection | 0.001369   | 0.002186   | +0.000817  | ✗ No
+Web Attack - XSS          | 0.825579   | 0.983058   | +0.157479  | ✓ Yes
+Infiltration              | 0.772727   | 0.842959   | +0.070232  | ✓ Yes
+Bot                       | 0.078222   | 0.122552   | +0.044330  | ✓ Yes
+PortScan                  | 0.001025   | 0.002035   | +0.001011  | ✗ No
+Heartbleed                | 0.033630   | 0.002330   | -0.031300  | ✓ Yes
+
+FALSE POSITIVE RATE BY ATTACK TYPE:
+--------------------------------------------------
+Attack Type               | Baseline   | SCS-ID     | Diff       | Significant
+--------------------------------------------------------------------------------
+BENIGN                    | 0.000509   | 0.001543   | +0.001034  | ✗ No
+DDoS                      | 0.034354   | 0.030962   | -0.003392  | ✗ No
+DoS GoldenEye             | 0.001945   | 0.001516   | -0.000429  | ✗ No
+DoS Hulk                  | 0.003995   | 0.002010   | -0.001986  | ✗ No
+DoS Slowhttptest          | 0.007910   | 0.009557   | +0.001646  | ✗ No
+DoS slowloris             | 0.002102   | 0.001253   | -0.000849  | ✗ No
+FTP-Patator               | 0.002428   | 0.000771   | -0.001657  | ✗ No
+SSH-Patator               | 0.003755   | 0.001750   | -0.002005  | ✗ No
+Web Attack - Brute Force  | 0.000000   | 0.000000   | +0.000000  | ✗ No
+Web Attack - Sql Injection | 0.013496   | 0.008442   | -0.005055  | ✗ No
+Web Attack - XSS          | 0.015278   | 0.000964   | -0.014314  | ✓ Yes
+Infiltration              | 0.000580   | 0.000326   | -0.000254  | ✗ No
+Bot                       | 0.000846   | 0.007785   | +0.006939  | ✗ No
+PortScan                  | 0.012886   | 0.007778   | -0.005108  | ✗ No
+Heartbleed                | 0.014507   | 0.015614   | +0.001107  | ✗ No
+
+STATISTICAL SIGNIFICANCE TESTING (PER-ATTACK TYPE):
+============================================================
+
+PRECISION - STATISTICAL SIGNIFICANCE RESULTS:
+--------------------------------------------------
+
+| Attack Type               | n  | α    | Test     | p-value  | Effect | Baseline | SCS-ID   | Sig |
+|---------------------------|----|------|----------|----------|--------|----------|----------|-----|
+| BENIGN                    | 30 | 0.05 | t-test   | 0.103    | -0.31  | 0.999881 | 0.999651 | ✗   |
+| DDoS                      | 30 | 0.05 | t-test   | 0.455    | -0.14  | 0.022031 | 0.024385 | ✗   |
+| DoS GoldenEye             | 30 | 0.05 | t-test   | 0.069    | -0.35  | 0.964862 | 0.972388 | ✗   |
+| DoS Hulk                  | 30 | 0.05 | t-test   | <0.001   | -5.23  | 0.501491 | 0.666813 | ✓   |
+| DoS Slowhttptest          | 30 | 0.05 | t-test   | 0.021    | 0.45   | 0.901605 | 0.883408 | ✓   |
+| DoS slowloris             | 30 | 0.05 | t-test   | <0.001   | -2.86  | 0.491997 | 0.620690 | ✓   |
+| FTP-Patator               | 30 | 0.05 | t-test   | <0.001   | -6.62  | 0.465286 | 0.727017 | ✓   |
+| SSH-Patator               | 30 | 0.05 | t-test   | <0.001   | -6.16  | 0.384849 | 0.572768 | ✓   |
+| Web Attack - Brute Force  | 30 | 0.05 | t-test   | 0.193    | 0.24   | 0.000000 | 0.000000 | ✗   |
+| Web Attack - Sql Injection| 30 | 0.05 | t-test   | 0.890    | -0.03  | 0.000685 | 0.001095 | ✗   |
+| Web Attack - XSS          | 30 | 0.05 | t-test   | <0.001   | -6.50  | 0.707233 | 0.974554 | ✓   |
+| Infiltration              | 30 | 0.05 | t-test   | <0.001   | -2.76  | 0.668684 | 0.782108 | ✓   |
+| Bot                       | 30 | 0.05 | t-test   | 0.190    | -0.24  | 0.064327 | 0.065566 | ✗   |
+| PortScan                  | 30 | 0.05 | t-test   | 0.862    | 0.03   | 0.000513 | 0.001019 | ✗   |
+| Heartbleed                | 30 | 0.05 | t-test   | <0.001   | 0.82   | 0.017110 | 0.001184 | ✓   |
+
+Significant: 8/15 attacks (DoS Hulk, DoS Slowhttptest, DoS slowloris, FTP-Patator, SSH-Patator, Web Attack - XSS, Infiltration, Heartbleed)
+
+RECALL - STATISTICAL SIGNIFICANCE RESULTS:
+--------------------------------------------------
+
+| Attack Type               | n  | α    | Test     | p-value  | Effect | Baseline | SCS-ID   | Sig |
+|---------------------------|----|------|----------|----------|--------|----------|----------|-----|
+| BENIGN                    | 30 | 0.05 | t-test   | 0.227    | -0.23  | 0.866810 | 0.896414 | ✗   |
+| DDoS                      | 30 | 0.05 | Wilcoxon | 0.133    | -0.23  | 0.998294 | 0.998294 | ✗   |
+| DoS GoldenEye             | 30 | 0.05 | Wilcoxon | 1.000    | -0.08  | 0.998828 | 0.998568 | ✗   |
+| DoS Hulk                  | 30 | 0.05 | t-test   | 0.457    | 0.14   | 0.981205 | 0.981854 | ✗   |
+| DoS Slowhttptest          | 30 | 0.05 | t-test   | 0.093    | -0.32  | 0.984958 | 0.983955 | ✗   |
+| DoS slowloris             | 30 | 0.05 | t-test   | 0.658    | 0.08   | 0.980230 | 0.987245 | ✗   |
+| FTP-Patator               | 30 | 0.05 | t-test   | 0.176    | 0.25   | 0.987616 | 0.959752 | ✗   |
+| SSH-Patator               | 30 | 0.05 | t-test   | 0.727    | 0.06   | 0.996067 | 0.994944 | ✗   |
+| Web Attack - Brute Force  | 30 | 0.05 | Wilcoxon | 0.314    | 0.17   | 0.000000 | 0.000000 | ✗   |
+| Web Attack - Sql Injection| 30 | 0.05 | t-test   | 0.611    | -0.09  | 0.636364 | 0.636364 | ✗   |
+| Web Attack - XSS          | 30 | 0.05 | t-test   | 0.853    | 0.03   | 0.991491 | 0.991712 | ✗   |
+| Infiltration              | 30 | 0.05 | t-test   | 0.743    | 0.06   | 0.915114 | 0.914079 | ✗   |
+| Bot                       | 30 | 0.05 | t-test   | <0.001   | -20.48 | 0.099773 | 0.936508 | ✓   |
+| PortScan                  | 30 | 0.05 | t-test   | <0.001   | -3.21  | 0.833333 | 1.000000 | ✓   |
+| Heartbleed                | 30 | 0.05 | Wilcoxon | <0.001   | 24.88  | 0.974490 | 0.071429 | ✓   |
+
+Significant: 3/15 attacks (Bot, PortScan, Heartbleed)
+
+F1-SCORE - STATISTICAL SIGNIFICANCE RESULTS:
+--------------------------------------------------
+
+| Attack Type               | n  | α    | Test     | p-value  | Effect | Baseline | SCS-ID   | Sig |
+|---------------------------|----|------|----------|----------|--------|----------|----------|-----|
+| BENIGN                    | 30 | 0.05 | t-test   | 0.077    | -0.33  | 0.928602 | 0.945222 | ✗   |
+| DDoS                      | 30 | 0.05 | t-test   | 0.266    | -0.21  | 0.043110 | 0.047607 | ✗   |
+| DoS GoldenEye             | 30 | 0.05 | t-test   | 0.822    | -0.04  | 0.981551 | 0.985304 | ✗   |
+| DoS Hulk                  | 30 | 0.05 | t-test   | <0.001   | -2.80  | 0.663744 | 0.794233 | ✓   |
+| DoS Slowhttptest          | 30 | 0.05 | t-test   | 0.556    | 0.11   | 0.941440 | 0.930975 | ✗   |
+| DoS slowloris             | 30 | 0.05 | t-test   | <0.001   | -2.02  | 0.655158 | 0.762186 | ✓   |
+| FTP-Patator               | 30 | 0.05 | t-test   | <0.001   | -4.05  | 0.632560 | 0.827329 | ✓   |
+| SSH-Patator               | 30 | 0.05 | t-test   | <0.001   | -3.96  | 0.555190 | 0.727011 | ✓   |
+| Web Attack - Brute Force  | 30 | 0.05 | t-test   | 0.178    | 0.25   | 0.000000 | 0.000000 | ✗   |
+| Web Attack - Sql Injection| 30 | 0.05 | Wilcoxon | 0.130    | 0.12   | 0.001369 | 0.002186 | ✗   |
+| Web Attack - XSS          | 30 | 0.05 | t-test   | <0.001   | -1.99  | 0.825579 | 0.983058 | ✓   |
+| Infiltration              | 30 | 0.05 | t-test   | <0.001   | -1.82  | 0.772727 | 0.842959 | ✓   |
+| Bot                       | 30 | 0.05 | t-test   | <0.001   | -3.92  | 0.078222 | 0.122552 | ✓   |
+| PortScan                  | 30 | 0.05 | t-test   | 0.541    | 0.11   | 0.001025 | 0.002035 | ✗   |
+| Heartbleed                | 30 | 0.05 | t-test   | <0.001   | 2.41   | 0.033630 | 0.002330 | ✓   |
+
+Significant: 8/15 attacks (DoS Hulk, DoS slowloris, FTP-Patator, SSH-Patator, Web Attack - XSS, Infiltration, Bot, Heartbleed)
+
+FALSE POSITIVE RATE - STATISTICAL SIGNIFICANCE RESULTS:
+--------------------------------------------------
+
+| Attack Type               | n  | α    | Test     | p-value  | Effect | Baseline | SCS-ID   | Sig |
+|---------------------------|----|------|----------|----------|--------|----------|----------|-----|
+| BENIGN                    | 30 | 0.05 | Wilcoxon | 0.543    | 0.18   | 0.000509 | 0.001543 | ✗   |
+| DDoS                      | 30 | 0.05 | t-test   | 0.736    | -0.06  | 0.034354 | 0.030962 | ✗   |
+| DoS GoldenEye             | 30 | 0.05 | t-test   | 0.812    | -0.04  | 0.001945 | 0.001516 | ✗   |
+| DoS Hulk                  | 30 | 0.05 | t-test   | 0.353    | 0.17   | 0.003995 | 0.002010 | ✗   |
+| DoS Slowhttptest          | 30 | 0.05 | t-test   | 0.726    | -0.06  | 0.007910 | 0.009557 | ✗   |
+| DoS slowloris             | 30 | 0.05 | t-test   | 0.386    | 0.16   | 0.002102 | 0.001253 | ✗   |
+| FTP-Patator               | 30 | 0.05 | t-test   | 0.885    | 0.03   | 0.002428 | 0.000771 | ✗   |
+| SSH-Patator               | 30 | 0.05 | t-test   | 0.212    | 0.23   | 0.003755 | 0.001750 | ✗   |
+| Web Attack - Brute Force  | 30 | 0.05 | t-test   | 0.856    | 0.03   | 0.000000 | 0.000000 | ✗   |
+| Web Attack - Sql Injection| 30 | 0.05 | t-test   | 0.292    | 0.20   | 0.013496 | 0.008442 | ✗   |
+| Web Attack - XSS          | 30 | 0.05 | t-test   | <0.001   | 1.21   | 0.015278 | 0.000964 | ✓   |
+| Infiltration              | 30 | 0.05 | t-test   | 0.112    | -0.30  | 0.000580 | 0.000326 | ✗   |
+| Bot                       | 30 | 0.05 | t-test   | 0.065    | -0.35  | 0.000846 | 0.007785 | ✗   |
+| PortScan                  | 30 | 0.05 | t-test   | 0.096    | 0.31   | 0.012886 | 0.007778 | ✗   |
+| Heartbleed                | 30 | 0.05 | t-test   | 0.376    | -0.16  | 0.014507 | 0.015614 | ✗   |
+
+Significant: 1/15 attacks (Web Attack - XSS)
+
+HYPOTHESIS 2 CONCLUSION:
+==============================
+Total Statistical Tests Conducted: 60
+Statistically Significant Results: 20
+Percentage of Significant Results: 33.3%
+
+CONCLUSION: HYPOTHESIS 2 (H1) IS SUPPORTED
+There are statistically significant differences in detection
+performance between SCS-ID and Baseline CNN models across
+multiple attack types and performance metrics.
+
+================================================================================
