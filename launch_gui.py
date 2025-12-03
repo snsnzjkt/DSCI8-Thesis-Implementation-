@@ -35,15 +35,15 @@ def check_requirements():
 
 def check_models():
     """Check if trained models are available"""
-    baseline_model = Path("results/baseline/best_baseline_model.pth")
-    scs_id_model = Path("results/scs_id/scs_id_best_model.pth")
+    baseline_model = Path("results/baseline_model.pth")
+    scs_id_model = Path("results/scs_id_best_model.pth")
     
     if not baseline_model.exists():
-        print("⚠️  Warning: Baseline model not found at results/baseline/best_baseline_model.pth")
+        print("⚠️  Warning: Baseline model not found at results/baseline_model.pth")
         return False
     
     if not scs_id_model.exists():
-        print("⚠️  Warning: SCS-ID model not found at results/scs_id/scs_id_best_model.pth")
+        print("⚠️  Warning: SCS-ID model not found at results/scs_id_best_model.pth")
         return False
     
     return True

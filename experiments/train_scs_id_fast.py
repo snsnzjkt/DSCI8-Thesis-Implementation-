@@ -229,7 +229,7 @@ class FastSCSIDTrainer:
         print(f"   Features: {X_train.shape[1]} (DeepSeek RL selected)")
         print(f"   Classes: {num_classes}")
         
-        self.model = create_scs_id_model(X_train.shape[1], num_classes, False, 0.0).to(self.device)
+        self.model = create_scs_id_model(X_train.shape[1], num_classes, dropout_rate=0.3).to(self.device)
         params_before, _ = self.model.count_parameters()
         print(f"   Parameters: {params_before:,}")
         print("   (Structured pruning will be applied post-training)")
@@ -333,7 +333,7 @@ class FastSCSIDTrainer:
         test_acc, test_f1, precision, recall, y_true, y_pred = self.evaluate_model(self.model, test_loader)
         
         # Calculate total compression
-        original_size = get_model_size_mb(create_scs_id_model(X_train.shape[1], num_classes, False, 0.0))
+        original_size = get_model_size_mb(create_scs_id_model(X_train.shape[1], num_classes, dropout_rate=0.3))
         final_size = get_model_size_mb(self.model)
         total_compression = (original_size - final_size) / original_size * 100
         

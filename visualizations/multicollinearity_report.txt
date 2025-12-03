@@ -1,0 +1,308 @@
+MULTICOLLINEARITY ANALYSIS REPORT
+==================================================
+
+Dataset: CIC-IDS2017 (Processed)
+Total Features: 78
+Analysis Date: 2025-12-03 16:13:49
+
+CORRELATION ANALYSIS:
+------------------------------
+Correlation Threshold: 0.8
+Extreme Correlation Threshold: 0.95
+High Correlation Pairs Found: 123
+Extreme Correlation Pairs Found: 42
+
+TOP 20 HIGHEST CORRELATIONS:
+ 1. Total Fwd Packets <-> Subflow Fwd Packets
+    Correlation:  1.0000
+ 2. Total Backward Packets <-> Subflow Bwd Packets
+    Correlation:  1.0000
+ 3. Total Length of Fwd Packets <-> Subflow Fwd Bytes
+    Correlation:  1.0000
+ 4. Total Length of Bwd Packets <-> Subflow Bwd Bytes
+    Correlation:  1.0000
+ 5. Fwd Packet Length Mean <-> Avg Fwd Segment Size
+    Correlation:  1.0000
+ 6. Bwd Packet Length Mean <-> Avg Bwd Segment Size
+    Correlation:  1.0000
+ 7. Fwd PSH Flags <-> SYN Flag Count
+    Correlation:  1.0000
+ 8. Fwd Header Length <-> Fwd Header Length.1
+    Correlation:  1.0000
+ 9. Packet Length Mean <-> Average Packet Size
+    Correlation:  0.9989
+10. Flow Duration <-> Fwd IAT Total
+    Correlation:  0.9939
+11. Flow IAT Max <-> Fwd IAT Max
+    Correlation:  0.9922
+12. Bwd Packet Length Max <-> Bwd Packet Length Std
+    Correlation:  0.9911
+13. Max Packet Length <-> Packet Length Std
+    Correlation:  0.9875
+14. Fwd IAT Max <-> Idle Max
+    Correlation:  0.9874
+15. Total Fwd Packets <-> Fwd Header Length
+    Correlation:  0.9868
+16. Total Fwd Packets <-> Fwd Header Length.1
+    Correlation:  0.9868
+17. Fwd Header Length <-> Subflow Fwd Packets
+    Correlation:  0.9868
+18. Fwd Header Length.1 <-> Subflow Fwd Packets
+    Correlation:  0.9868
+19. Idle Mean <-> Idle Min
+    Correlation:  0.9862
+20. Bwd Packet Length Max <-> Max Packet Length
+    Correlation:  0.9843
+
+VARIANCE INFLATION FACTOR (VIF) ANALYSIS:
+---------------------------------------------
+VIF Threshold: 10.0
+Features Analyzed: 50
+High VIF Features: 39
+
+TOP 20 HIGHEST VIF SCORES:
+ 1. Fwd Header Length.1
+    VIF: ∞
+ 2. Fwd Header Length
+    VIF: ∞
+ 3. Fwd URG Flags
+    VIF: ∞
+ 4. Bwd Packet Length Mean
+    VIF: ∞
+ 5. Subflow Bwd Bytes
+    VIF: ∞
+ 6. Total Length of Bwd Packets
+    VIF: ∞
+ 7. Avg Bwd Segment Size
+    VIF: ∞
+ 8. Bwd URG Flags
+    VIF: ∞
+ 9. Total Backward Packets
+    VIF: ∞
+10. Bwd Avg Bytes/Bulk
+    VIF: ∞
+11. Fwd Avg Packets/Bulk
+    VIF: ∞
+12. RST Flag Count
+    VIF: ∞
+13. Subflow Bwd Packets
+    VIF: ∞
+14. Fwd Packet Length Mean
+    VIF: ∞
+15. Avg Fwd Segment Size
+    VIF: ∞
+16. Fwd Avg Bulk Rate
+    VIF: ∞
+17. CWE Flag Count
+    VIF: ∞
+18. Flow Duration
+    VIF: 2224.61
+19. Fwd IAT Total
+    VIF: 1899.82
+20. Flow IAT Max
+    VIF: 1576.62
+
+RECOMMENDATIONS:
+--------------------
+FEATURES RECOMMENDED FOR REMOVAL:
+ 1. Bwd Packet Length Std
+ 2. Fwd Packet Length Mean
+ 3. Subflow Fwd Packets
+ 4. Idle Mean
+ 5. Total Backward Packets
+ 6. Fwd Packet Length Std
+ 7. Total Length of Bwd Packets
+ 8. Flow IAT Max
+ 9. Avg Bwd Segment Size
+10. Fwd Header Length
+11. Packet Length Std
+12. SYN Flag Count
+13. Subflow Bwd Packets
+14. Fwd Header Length.1
+15. Bwd Packet Length Max
+16. Fwd IAT Max
+17. Total Length of Fwd Packets
+18. Fwd IAT Total
+19. Packet Length Mean
+20. Average Packet Size
+21. Bwd Packet Length Mean
+
+REMOVAL RATIONALE:
+• Remove 'Subflow Fwd Packets' (extremely correlated with 'Total Fwd Packets', r=1.000)
+• Remove 'Total Backward Packets' (extremely correlated with 'Subflow Bwd Packets', r=1.000)
+• Remove 'Total Length of Fwd Packets' (extremely correlated with 'Subflow Fwd Bytes', r=1.000)
+• Remove 'Total Length of Bwd Packets' (extremely correlated with 'Subflow Bwd Bytes', r=1.000)
+• Remove 'Fwd Packet Length Mean' (extremely correlated with 'Avg Fwd Segment Size', r=1.000)
+• Remove 'Bwd Packet Length Mean' (extremely correlated with 'Avg Bwd Segment Size', r=1.000)
+• Remove 'SYN Flag Count' (extremely correlated with 'Fwd PSH Flags', r=1.000)
+• Remove 'Fwd Header Length.1' (extremely correlated with 'Fwd Header Length', r=1.000)
+• Remove 'Average Packet Size' (extremely correlated with 'Packet Length Mean', r=0.999)
+• Remove 'Fwd IAT Total' (extremely correlated with 'Flow Duration', r=0.994)
+• Remove 'Flow IAT Max' (extremely correlated with 'Fwd IAT Max', r=0.992)
+• Remove 'Bwd Packet Length Std' (extremely correlated with 'Bwd Packet Length Max', r=0.991)
+• Remove 'Packet Length Std' (extremely correlated with 'Max Packet Length', r=0.987)
+• Remove 'Fwd IAT Max' (extremely correlated with 'Idle Max', r=0.987)
+• Remove 'Fwd Header Length' (extremely correlated with 'Total Fwd Packets', r=0.987)
+• Remove 'Fwd Header Length.1' (extremely correlated with 'Total Fwd Packets', r=0.987)
+• Remove 'Subflow Fwd Packets' (extremely correlated with 'Fwd Header Length', r=0.987)
+• Remove 'Subflow Fwd Packets' (extremely correlated with 'Fwd Header Length.1', r=0.987)
+• Remove 'Idle Mean' (extremely correlated with 'Idle Min', r=0.986)
+• Remove 'Bwd Packet Length Max' (extremely correlated with 'Max Packet Length', r=0.984)
+• Remove 'Subflow Bwd Packets' (extremely correlated with 'Bwd Header Length', r=0.982)
+• Remove 'Total Backward Packets' (extremely correlated with 'Bwd Header Length', r=0.982)
+• Remove 'Flow IAT Max' (extremely correlated with 'Idle Max', r=0.981)
+• Remove 'Bwd Packet Length Std' (extremely correlated with 'Packet Length Std', r=0.978)
+• Remove 'Bwd Packet Length Max' (extremely correlated with 'Packet Length Std', r=0.976)
+• Remove 'Bwd Packet Length Std' (extremely correlated with 'Max Packet Length', r=0.976)
+• Remove 'Idle Mean' (extremely correlated with 'Idle Max', r=0.974)
+• Remove 'Bwd Packet Length Mean' (extremely correlated with 'Bwd Packet Length Max', r=0.966)
+• Remove 'Bwd Packet Length Max' (extremely correlated with 'Avg Bwd Segment Size', r=0.966)
+• Remove 'Avg Bwd Segment Size' (extremely correlated with 'Packet Length Std', r=0.966)
+• Remove 'Bwd Packet Length Mean' (extremely correlated with 'Packet Length Std', r=0.966)
+• Remove 'Fwd IAT Max' (extremely correlated with 'Idle Mean', r=0.963)
+• Remove 'Bwd Packet Length Mean' (extremely correlated with 'Bwd Packet Length Std', r=0.963)
+• Remove 'Bwd Packet Length Std' (extremely correlated with 'Avg Bwd Segment Size', r=0.963)
+• Remove 'Fwd Packet Length Std' (extremely correlated with 'Fwd Packet Length Max', r=0.963)
+• Remove 'Packet Length Mean' (extremely correlated with 'Packet Length Std', r=0.962)
+• Remove 'Average Packet Size' (extremely correlated with 'Packet Length Std', r=0.959)
+• Remove 'Flow IAT Max' (extremely correlated with 'Idle Mean', r=0.957)
+• Remove 'Bwd Packet Length Mean' (extremely correlated with 'Packet Length Mean', r=0.953)
+• Remove 'Avg Bwd Segment Size' (extremely correlated with 'Packet Length Mean', r=0.953)
+• Remove 'Bwd Packet Length Mean' (extremely correlated with 'Max Packet Length', r=0.950)
+• Remove 'Avg Bwd Segment Size' (extremely correlated with 'Max Packet Length', r=0.950)
+
+CORRELATED FEATURE GROUPS:
+Group 1: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 2: Subflow Fwd Packets, Total Backward Packets, Fwd Header Length.1, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Total Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 3: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Fwd Header Length.1, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 4: Avg Fwd Segment Size, Fwd Packet Length Std, Fwd Packet Length Mean, Fwd Packet Length Max
+Group 5: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 6: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 7: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 8: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 9: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 10: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 11: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 12: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 13: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 14: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 15: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 16: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 17: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 18: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 19: Subflow Fwd Packets, Total Backward Packets, Fwd Header Length.1, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Total Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 20: Subflow Fwd Packets, Total Backward Packets, Fwd Header Length.1, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Total Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 21: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 22: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 23: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 24: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 25: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 26: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 27: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 28: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 29: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 30: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 31: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 32: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 33: Fwd Packet Length Std, Fwd Packet Length Mean, Fwd Packet Length Max, Avg Fwd Segment Size
+Group 34: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 35: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 36: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 37: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 38: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 39: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 40: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 41: Active Min, Active Max, Active Mean
+Group 42: Bwd IAT Std, Bwd IAT Max, Bwd IAT Total
+Group 43: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 44: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 45: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 46: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 47: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 48: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 49: Bwd IAT Std, Bwd IAT Max, Bwd IAT Total
+Group 50: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 51: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 52: Flow IAT Mean, Fwd IAT Min, Fwd IAT Mean
+Group 53: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 54: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 55: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 56: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 57: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 58: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 59: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 60: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 61: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 62: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 63: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 64: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 65: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 66: Active Min, Active Max, Active Mean
+Group 67: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 68: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Max Packet Length, Packet Length Mean, Packet Length Variance, Average Packet Size, Packet Length Std, Bwd Packet Length Mean
+Group 69: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 70: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Fwd Header Length.1, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 71: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Fwd Header Length.1, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 72: Flow IAT Mean, Fwd IAT Min, Fwd IAT Mean
+Group 73: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 74: Avg Fwd Segment Size, Fwd Packet Length Std, Fwd Packet Length Mean, Fwd Packet Length Max
+Group 75: Avg Fwd Segment Size, Fwd Packet Length Std, Fwd Packet Length Mean, Fwd Packet Length Max
+Group 76: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Std, Fwd IAT Total, Flow Duration
+Group 77: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 78: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Total Length of Fwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 79: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Std, Fwd IAT Total, Flow Duration
+Group 80: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 81: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 82: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Std, Fwd IAT Total, Flow Duration
+Group 83: PSH Flag Count, Init_Win_bytes_forward, ACK Flag Count
+Group 84: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Std, Fwd IAT Total, Flow Duration
+Group 85: Bwd IAT Std, Bwd IAT Max, Bwd IAT Total
+Group 86: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 87: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 88: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 89: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 90: Fwd Packet Length Std, Fwd Packet Length Mean, Avg Fwd Segment Size, Fwd Packet Length Max
+Group 91: Fwd Packet Length Std, Fwd Packet Length Mean, Avg Fwd Segment Size, Fwd Packet Length Max
+Group 92: Bwd Packet Length Std, Avg Bwd Segment Size, Bwd Packet Length Max, Packet Length Std, Max Packet Length, Packet Length Mean, Average Packet Size, Packet Length Variance, Bwd Packet Length Mean
+Group 93: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 94: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 95: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 96: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Total Length of Fwd Packets, Subflow Bwd Packets, Fwd Header Length, Bwd Header Length, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 97: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Fwd Header Length.1, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Bwd Header Length
+Group 98: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 99: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 100: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 101: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 102: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 103: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 104: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Std, Fwd IAT Total, Flow Duration
+Group 105: Flow IAT Mean, Fwd IAT Min, Fwd IAT Mean
+Group 106: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 107: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 108: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 109: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 110: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 111: PSH Flag Count, Init_Win_bytes_forward, ACK Flag Count
+Group 112: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 113: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 114: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 115: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 116: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 117: Subflow Fwd Packets, Total Backward Packets, Total Fwd Packets, Subflow Bwd Packets, Bwd Header Length, Fwd Header Length, Total Length of Fwd Packets, Subflow Fwd Bytes, act_data_pkt_fwd, Fwd Header Length.1
+Group 118: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+Group 119: Flow IAT Std, Flow IAT Max, Idle Mean, Idle Min, Idle Max, Fwd IAT Max, Fwd IAT Total, Fwd IAT Std, Flow Duration
+
+SUMMARY STATISTICS:
+--------------------
+Correlation Statistics:
+  Mean Absolute Correlation: 0.1880
+  Max Absolute Correlation: 1.0000
+  Correlations > 0.5: 224
+  Correlations > 0.8: 123
+  Correlations > 0.95: 42
+
+VIF Statistics:
+  Mean VIF: 277.42
+  Max VIF: 2224.61
+  VIF > 5: 24
+  VIF > 10: 22

@@ -34,7 +34,7 @@ class ChannelAttention(nn.Module):
 
 class OptimizedFireModule(nn.Module):
     """Enhanced Fire Module with residual connections and attention"""
-    def __init__(self, input_channels, squeeze_channels, expand_channels):
+    def __init__(self, input_channels, squeeze_channels, expand_channels, dropout_rate=0.2):
         super().__init__()
         
         # Fixed channel sizes
@@ -71,6 +71,7 @@ class OptimizedFireModule(nn.Module):
         )
         
         self.attention = ChannelAttention(expand_channels)
+        self.dropout = nn.Dropout(dropout_rate)
         
         # Residual connection if dimensions match
         self.residual = input_channels == expand_channels
@@ -90,8 +91,9 @@ class OptimizedFireModule(nn.Module):
         # Combine expand paths
         out = torch.cat([out1x1, out3x3], dim=1)
         
-        # Apply attention
+        # Apply attention and dropout
         out = self.attention(out)
+        out = self.dropout(out)
         
         # Optional residual connection
         if self.residual and self.input_channels == self.expand_channels:
@@ -159,12 +161,13 @@ class OptimizedSCSID(nn.Module):
     - Stable gradients
     - Parameter efficiency
     """
-    def __init__(self, input_features, num_classes, base_channels=32):
+    def __init__(self, input_features, num_classes, base_channels=32, dropout_rate=0.3):
         super().__init__()
         
         # Fixed channel progression
         self.base_channels = 32  # Fixed base channels
         channels = [32, 48, 64]  # Progressive channel growth
+        self.dropout_rate = dropout_rate
         
         # Input processing
         self.input_conv = nn.Sequential(
@@ -173,17 +176,20 @@ class OptimizedSCSID(nn.Module):
             nn.ReLU(inplace=True)
         )
         self.input_attention = ChannelAttention(self.base_channels)
+        self.input_dropout = nn.Dropout(dropout_rate * 0.5)  # Lighter dropout for input
         
         # Feature extraction path
         self.fire1 = OptimizedFireModule(
             channels[0],  # 32
             channels[0] // 2,  # 16
-            channels[1]  # 48
+            channels[1],  # 48
+            dropout_rate * 0.7  # Moderate dropout for fire modules
         )
         self.fire2 = OptimizedFireModule(
             channels[1],  # 48
             channels[1] // 2,  # 24
-            channels[2]  # 64
+            channels[2],  # 64
+            dropout_rate * 0.8  # Slightly higher dropout for deeper layers
         )
         
         channels = [32, 48, 64]  # Redefine for clarity
@@ -191,11 +197,13 @@ class OptimizedSCSID(nn.Module):
         # Feature refinement
         self.convseek1 = EnhancedConvSeekBlock(
             channels[2],  # 64
-            channels[1]   # 48
+            channels[1],  # 48
+            dropout_rate=dropout_rate * 0.9  # Higher dropout for refinement layers
         )
         self.convseek2 = EnhancedConvSeekBlock(
             channels[1],  # 48
-            channels[0]   # 32
+            channels[0],  # 32
+            dropout_rate=dropout_rate  # Full dropout rate for final convseek
         )
         
         # Classifier
@@ -204,8 +212,12 @@ class OptimizedSCSID(nn.Module):
             nn.Linear(channels[0], channels[1], bias=False),  # 32 -> 48
             nn.BatchNorm1d(channels[1]),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.2),  # Light dropout
-            nn.Linear(channels[1], num_classes)  # 48 -> num_classes
+            nn.Dropout(dropout_rate * 0.8),  # Moderate dropout in classifier
+            nn.Linear(channels[1], channels[1] // 2, bias=False),  # Additional layer for regularization
+            nn.BatchNorm1d(channels[1] // 2),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout_rate),  # Full dropout before final layer
+            nn.Linear(channels[1] // 2, num_classes)  # Final classification
         )
         
         # Initialize weights
@@ -229,6 +241,7 @@ class OptimizedSCSID(nn.Module):
         # Enhanced feature extraction
         x = self.input_conv(x)
         x = self.input_attention(x)
+        x = self.input_dropout(x)
         
         # Fire modules with residual connections
         x = self.fire1(x)

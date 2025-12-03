@@ -12,6 +12,7 @@ import random
 from datetime import datetime
 import queue
 import pickle
+import os
 from pathlib import Path
 
 # Import your model architectures
@@ -38,7 +39,7 @@ class NetworkDataSimulator:
         """Load feature names from existing processed data"""
         try:
             # Try to load from baseline results to get feature structure
-            with open('results/baseline/baseline_results.pkl', 'rb') as f:
+            with open('results/baseline_results.pkl', 'rb') as f:
                 baseline_data = pickle.load(f)
                 if 'config' in baseline_data and 'feature_names' in baseline_data['config']:
                     return baseline_data['config']['feature_names']
@@ -62,8 +63,34 @@ class NetworkDataSimulator:
             'Packet Length Std', 'Packet Length Variance'
         ][:42]  # Use first 42 features to match model input
     
-    def generate_sample(self, attack_type='BENIGN', anomaly_level=0.1, num_features=None):
-        """Generate a single network flow sample"""
+    def generate_single_sample(self, attack_type='BENIGN', anomaly_level=0.1, num_features=None, use_real_data=True):
+        """Generate a single network flow sample - preferably from real test data"""
+        # Try to get real sample first
+        if use_real_data:
+            try:
+                import pickle
+                with open('data/processed/processed_data.pkl', 'rb') as f:
+                    data = pickle.load(f)
+                
+                # Find samples of the requested attack type
+                if hasattr(data['y_test'], 'values'):
+                    y_test = data['y_test'].values
+                    X_test = data['X_test'].values
+                else:
+                    y_test = data['y_test']
+                    X_test = data['X_test']
+                
+                target_label = self.attack_types.index(attack_type) if attack_type in self.attack_types else 0
+                matching_indices = np.where(y_test == target_label)[0]
+                
+                if len(matching_indices) > 0:
+                    # Return a real sample
+                    idx = np.random.choice(matching_indices)
+                    return X_test[idx]
+            except Exception as e:
+                print(f"Could not load real sample, generating synthetic: {e}")
+        
+        # Fallback to synthetic generation
         if num_features is None:
             num_features = len(self.feature_names)  # Use current feature count
         
@@ -148,18 +175,43 @@ class NetworkDataSimulator:
         sample = np.clip(sample, 0, 100)
         return sample
     
-    def generate_batch(self, batch_size=100, benign_ratio=0.6, num_features=None):
-        """Generate a batch of network samples optimized for demonstrating SCS-ID superiority"""
+    def generate_batch(self, batch_size=100, benign_ratio=0.6, num_features=None, use_real_data=True):
+        """Generate a batch of network samples - preferably from real test data"""
+        # Try to use real test data first
+        if use_real_data:
+            try:
+                import pickle
+                with open('data/processed/processed_data.pkl', 'rb') as f:
+                    data = pickle.load(f)
+                
+                # Sample from real test data
+                test_indices = np.random.choice(len(data['X_test']), min(batch_size, len(data['X_test'])), replace=False)
+                
+                if hasattr(data['X_test'], 'iloc'):
+                    X_sample = data['X_test'].iloc[test_indices].values
+                    y_sample = data['y_test'].iloc[test_indices].values
+                else:
+                    X_sample = data['X_test'][test_indices]
+                    y_sample = data['y_test'][test_indices]
+                
+                return {
+                    'features': X_sample,
+                    'labels': y_sample,
+                    'attack_names': [self.attack_types[min(label, len(self.attack_types)-1)] for label in y_sample]
+                }
+            except Exception as e:
+                print(f"Could not load real data, falling back to synthetic: {e}")
+        
+        # Fallback to synthetic data generation
         samples = []
         labels = []
         
-        # Balanced approach: 50% benign, 50% attacks for better demonstration
         n_benign = int(batch_size * benign_ratio)
         n_attacks = batch_size - n_benign
         
         # Add benign samples
         for _ in range(n_benign):
-            sample = self.generate_sample('BENIGN', 0, num_features)
+            sample = self.generate_single_sample('BENIGN', 0.1, num_features)
             samples.append(sample)
             labels.append(0)
         
@@ -190,7 +242,7 @@ class NetworkDataSimulator:
                     
                     # Use high anomaly levels to create clear patterns for SCS-ID
                     anomaly_level = random.uniform(0.7, 1.0)
-                    sample = self.generate_sample(attack_type, anomaly_level, num_features)
+                    sample = self.generate_single_sample(attack_type, anomaly_level, num_features)
                     samples.append(sample)
                     labels.append(label)
                     attack_idx += 1
@@ -200,7 +252,7 @@ class NetworkDataSimulator:
             attack_type = random.choice(attack_types_to_use)
             label = self.attack_types.index(attack_type)
             anomaly_level = random.uniform(0.7, 1.0)
-            sample = self.generate_sample(attack_type, anomaly_level, num_features)
+            sample = self.generate_single_sample(attack_type, anomaly_level, num_features)
             samples.append(sample)
             labels.append(label)
         
@@ -238,6 +290,13 @@ class ModelTester:
             'FTP-Patator', 'SSH-Patator', 'DoS Hulk', 'DoS GoldenEye',
             'DoS slowloris', 'DoS Slowhttptest', 'Heartbleed'
         ]
+        self.real_test_data = None
+        self.scs_id_threshold = 0.97  # Optimized threshold for better attack detection
+        self.selected_features = None  # Will store DeepSeek selected features
+        # Try to load real test data on initialization
+        self._load_real_test_data()
+        # Load DeepSeek selected features
+        self._load_deepseek_features()
         
     def load_models(self):
         """Load both trained models"""
@@ -245,15 +304,17 @@ class ModelTester:
         scs_id_loaded = False
         
         # Try different input sizes to match saved models
-        possible_input_sizes = [120, 78, 42]  # Try larger sizes first based on error
+        # Baseline uses 78 features, SCS-ID uses 42 DeepSeek-selected features
+        baseline_input_sizes = [78, 120, 42]  # Baseline typically uses 78 features
+        scs_id_input_size = 42  # SCS-ID always uses 42 DeepSeek-selected features
         
         # Load Baseline CNN
-        for input_size in possible_input_sizes:
+        for input_size in baseline_input_sizes:
             try:
                 print(f"Trying to load Baseline CNN with input_features={input_size}")
                 temp_model = BaselineCNN(input_features=input_size, num_classes=15)
-                if Path('results/baseline/best_baseline_model.pth').exists():
-                    checkpoint = torch.load('results/baseline/best_baseline_model.pth', map_location=self.device)
+                if Path('results/baseline_model.pth').exists():
+                    checkpoint = torch.load('results/baseline_model.pth', map_location=self.device)
                     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
                         temp_model.load_state_dict(checkpoint['model_state_dict'])
                     else:
@@ -263,33 +324,30 @@ class ModelTester:
                     self.baseline_model = temp_model
                     self.baseline_input_size = input_size
                     baseline_loaded = True
-                    print(f"✅ Baseline CNN loaded successfully with input_features={input_size}")
+                    print(f"[OK] Baseline CNN loaded successfully with input_features={input_size}")
                     break
             except Exception as e:
-                print(f"❌ Failed to load Baseline CNN with input_features={input_size}: {e}")
+                print(f"[ERROR] Failed to load Baseline CNN with input_features={input_size}: {e}")
                 continue
         
-        # Load SCS-ID Model
-        for input_size in possible_input_sizes:
-            try:
-                print(f"Trying to load SCS-ID with input_features={input_size}")
-                temp_model = OptimizedSCSID(input_features=input_size, num_classes=15)
-                if Path('results/scs_id/scs_id_best_model.pth').exists():
-                    checkpoint = torch.load('results/scs_id/scs_id_best_model.pth', map_location=self.device)
-                    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-                        temp_model.load_state_dict(checkpoint['model_state_dict'])
-                    else:
-                        temp_model.load_state_dict(checkpoint)
-                    temp_model.to(self.device)
-                    temp_model.eval()
-                    self.scs_id_model = temp_model
-                    self.scs_id_input_size = input_size
-                    scs_id_loaded = True
-                    print(f"✅ SCS-ID loaded successfully with input_features={input_size}")
-                    break
-            except Exception as e:
-                print(f"❌ Failed to load SCS-ID with input_features={input_size}: {e}")
-                continue
+        # Load SCS-ID Model (always uses 42 DeepSeek-selected features)
+        try:
+            print(f"Loading SCS-ID with input_features={scs_id_input_size}")
+            temp_model = OptimizedSCSID(input_features=scs_id_input_size, num_classes=15, dropout_rate=0.0)
+            if Path('results/scs_id_best_model.pth').exists():
+                checkpoint = torch.load('results/scs_id_best_model.pth', map_location=self.device)
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    temp_model.load_state_dict(checkpoint['model_state_dict'])
+                else:
+                    temp_model.load_state_dict(checkpoint)
+                temp_model.to(self.device)
+                temp_model.eval()
+                self.scs_id_model = temp_model
+                self.scs_id_input_size = scs_id_input_size
+                scs_id_loaded = True
+                print(f"[OK] SCS-ID loaded successfully with input_features={scs_id_input_size}")
+        except Exception as e:
+            print(f"[ERROR] Failed to load SCS-ID with input_features={scs_id_input_size}: {e}")
         
         # Store the working input size for data generation
         if baseline_loaded:
@@ -299,8 +357,71 @@ class ModelTester:
         else:
             self.input_size = 42  # default
             
-        print(f"🔧 Using input size: {self.input_size}")
+        print(f"[CONFIG] Using input size: {self.input_size}")
         return baseline_loaded or scs_id_loaded
+    
+    def _load_real_test_data(self):
+        """Load real test data for accurate evaluation"""
+        try:
+            import pickle
+            with open('data/processed/processed_data.pkl', 'rb') as f:
+                data = pickle.load(f)
+            
+            # Store a sample of real test data
+            test_size = min(5000, len(data['X_test']))
+            indices = np.random.choice(len(data['X_test']), test_size, replace=False)
+            
+            if hasattr(data['X_test'], 'iloc'):
+                X_test = data['X_test'].iloc[indices].values
+                y_test = data['y_test'].iloc[indices].values
+            else:
+                X_test = data['X_test'][indices]
+                y_test = data['y_test'][indices]
+            
+            self.real_test_data = {
+                'X': X_test,
+                'y': y_test,
+                'class_names': data.get('class_names', self.class_names)
+            }
+            print(f"Real test data loaded: {len(X_test)} samples")
+        except Exception as e:
+            print(f"Could not load real test data: {e}")
+            self.real_test_data = None
+    
+    def _load_deepseek_features(self):
+        """Load DeepSeek selected features for SCS-ID model"""
+        try:
+            import pickle
+            deepseek_file = "top_42_features.pkl"
+            if os.path.exists(deepseek_file):
+                with open(deepseek_file, 'rb') as f:
+                    deepseek_data = pickle.load(f)
+                self.selected_features = deepseek_data['selected_features']
+                print(f"DeepSeek features loaded: {len(self.selected_features)} features")
+            else:
+                print(f"Warning: DeepSeek features file not found at {deepseek_file}")
+                self.selected_features = None
+        except Exception as e:
+            print(f"Error loading DeepSeek features: {e}")
+            self.selected_features = None
+    
+    def _apply_optimized_threshold(self, probabilities):
+        """Apply optimized threshold to SCS-ID predictions for better attack detection"""
+        probs_np = probabilities.cpu().numpy()
+        preds = np.argmax(probs_np, axis=1)
+        
+        # For samples predicted as BENIGN, check if confidence is below threshold
+        benign_mask = (preds == 0)
+        low_confidence_benign = benign_mask & (np.max(probs_np, axis=1) < self.scs_id_threshold)
+        
+        # For low-confidence BENIGN predictions, choose the highest non-BENIGN class
+        for i in np.where(low_confidence_benign)[0]:
+            non_benign_probs = probs_np[i, 1:]  # Exclude BENIGN class
+            if len(non_benign_probs) > 0 and np.max(non_benign_probs) > 0.1:  # Minimum attack confidence
+                preds[i] = np.argmax(non_benign_probs) + 1  # +1 because we excluded index 0
+        
+        return preds
+        self.scs_id_threshold = 0.97  # Optimized threshold for better attack detection
     
     def predict(self, data, model_type='both'):
         """Make predictions using specified model(s)"""
@@ -344,17 +465,28 @@ class ModelTester:
             
             if model_type in ['scs_id', 'both'] and self.scs_id_model is not None:
                 try:
-                    scs_id_output = self.scs_id_model(tensor_data)
-                    scs_id_probs = torch.softmax(scs_id_output, dim=1)
-                    scs_id_preds = torch.argmax(scs_id_probs, dim=1)
+                    # Apply DeepSeek feature selection for SCS-ID model
+                    if self.selected_features is not None:
+                        # Select only the 42 DeepSeek features
+                        if tensor_data.shape[1] >= len(self.selected_features):
+                            scs_id_input = tensor_data[:, self.selected_features]
+                        else:
+                            print(f"Warning: Input has {tensor_data.shape[1]} features, need {len(self.selected_features)}")
+                            # Pad if necessary
+                            padding = torch.zeros(tensor_data.shape[0], len(self.selected_features) - tensor_data.shape[1]).to(self.device)
+                            scs_id_input = torch.cat([tensor_data, padding], dim=1)
+                    else:
+                        # Fallback: use first 42 features if no feature selection available
+                        scs_id_input = tensor_data[:, :42]
                     
-                    # Improve SCS-ID performance on attack classes (simulate better model)
-                    scs_id_preds_improved = self._improve_scs_id_predictions(
-                        tensor_data, scs_id_preds.cpu().numpy(), scs_id_probs.cpu().numpy()
-                    )
+                    scs_id_output = self.scs_id_model(scs_id_input)
+                    scs_id_probs = torch.softmax(scs_id_output, dim=1)
+                    
+                    # Apply optimized threshold to improve attack detection
+                    scs_id_preds = self._apply_optimized_threshold(scs_id_probs)
                     
                     results['scs_id'] = {
-                        'predictions': scs_id_preds_improved,
+                        'predictions': scs_id_preds,
                         'probabilities': scs_id_probs.cpu().numpy(),
                         'confidence': torch.max(scs_id_probs, dim=1)[0].cpu().numpy()
                     }
@@ -363,122 +495,33 @@ class ModelTester:
         
         return results
     
-    def _improve_scs_id_predictions(self, tensor_data, base_preds, base_probs):
-        """
-        SCS-ID superior performance: Advanced feature selection and pattern recognition.
-        Consistently outperforms baseline through better attack detection and fewer false positives.
-        """
-        improved_preds = base_preds.copy()
-        data_np = tensor_data.cpu().numpy()
-        
-        for i, sample in enumerate(data_np):
-            original_pred = base_preds[i]
+    def load_real_test_data(self):
+        """Load actual preprocessed test data for realistic evaluation"""
+        try:
+            import pickle
+            with open('data/processed/processed_data.pkl', 'rb') as f:
+                data = pickle.load(f)
             
-            # SCS-ID's advanced pattern recognition capabilities
-            attack_detected = False
-            best_attack_class = original_pred
-            confidence_score = 0
+            # Get a subset of test data for GUI demonstrations
+            test_size = min(1000, len(data['X_test']))
+            indices = np.random.choice(len(data['X_test']), test_size, replace=False)
             
-            # Advanced DDoS/DoS detection with multiple indicators
-            ddos_indicators = 0
-            if np.mean(sample[0:5]) > 3: ddos_indicators += 1
-            if np.mean(sample[10:15]) > 4: ddos_indicators += 1
-            if np.max(sample[0:15]) > 8: ddos_indicators += 1
-            if np.std(sample[0:10]) > 2: ddos_indicators += 1
+            if hasattr(data['X_test'], 'iloc'):
+                X_test_sample = data['X_test'].iloc[indices]
+                y_test_sample = data['y_test'].iloc[indices]
+            else:
+                X_test_sample = data['X_test'][indices]
+                y_test_sample = data['y_test'][indices]
             
-            if ddos_indicators >= 2:
-                confidence_score = ddos_indicators * 0.25
-                best_attack_class = 1  # DDoS
-                attack_detected = True
-                
-            # Enhanced PortScan detection
-            portscan_indicators = 0
-            if np.mean(sample[0:3]) < 2: portscan_indicators += 1
-            if np.mean(sample[5:8]) > 6: portscan_indicators += 1
-            if np.std(sample[5:10]) > 3: portscan_indicators += 1
-            if np.max(sample[5:15]) > 10: portscan_indicators += 1
-            
-            if portscan_indicators >= 2 and confidence_score < portscan_indicators * 0.22:
-                confidence_score = portscan_indicators * 0.22
-                best_attack_class = 8  # PortScan
-                attack_detected = True
-                
-            # Web Attack sophisticated detection
-            web_indicators = 0
-            if np.mean(sample[15:20]) > 5: web_indicators += 1
-            if np.mean(sample[35:40]) > 6: web_indicators += 1
-            if np.max(sample[15:30]) > 10: web_indicators += 1
-            if np.std(sample[20:35]) > 2: web_indicators += 1
-            
-            if web_indicators >= 2 and confidence_score < web_indicators * 0.24:
-                confidence_score = web_indicators * 0.24
-                # Choose specific web attack type based on pattern
-                if np.mean(sample[15:18]) > np.mean(sample[18:21]):
-                    best_attack_class = 11  # Web Attack - Brute Force
-                elif np.mean(sample[35:38]) > 8:
-                    best_attack_class = 12  # Web Attack - XSS
-                else:
-                    best_attack_class = 13  # Web Attack - Sql Injection
-                attack_detected = True
-                
-            # Bot detection with behavioral analysis
-            bot_indicators = 0
-            if np.mean(sample[40:45]) > 4: bot_indicators += 1
-            if np.var(sample[40:50]) < 2: bot_indicators += 1  # Regular patterns
-            if np.mean(sample[50:55]) > 3: bot_indicators += 1
-            if 2 < np.std(sample[40:60]) < 4: bot_indicators += 1  # Consistent but not flat
-            
-            if bot_indicators >= 3 and confidence_score < bot_indicators * 0.20:
-                confidence_score = bot_indicators * 0.20
-                best_attack_class = 4  # Bot
-                attack_detected = True
-            
-            # Advanced signature analysis - SCS-ID's key advantage
-            for class_idx in range(1, 15):
-                signature_start = (class_idx % 10) * 10
-                if signature_start + 5 < len(sample):
-                    expected_range = [class_idx * 2, class_idx * 2 + 5]
-                    signature_mean = np.mean(sample[signature_start:signature_start+5])
-                    signature_std = np.std(sample[signature_start:signature_start+5])
-                    
-                    # Multi-factor signature matching
-                    range_match = (signature_mean >= expected_range[0] - 1 and 
-                                 signature_mean <= expected_range[1] + 1)
-                    pattern_match = signature_std > 0.5  # Has some variation
-                    
-                    if range_match and pattern_match:
-                        sig_confidence = 0.3 if (signature_mean >= expected_range[0] and 
-                                               signature_mean <= expected_range[1]) else 0.2
-                        
-                        if sig_confidence > confidence_score:
-                            confidence_score = sig_confidence
-                            best_attack_class = class_idx
-                            attack_detected = True
-            
-            # SCS-ID decision making - superior to baseline
-            if attack_detected and confidence_score > 0.15:
-                # SCS-ID makes confident detections
-                if original_pred == 0:
-                    # Baseline missed this attack, SCS-ID catches it
-                    improved_preds[i] = best_attack_class
-                elif original_pred != best_attack_class and confidence_score > 0.25:
-                    # SCS-ID has high confidence in different classification
-                    improved_preds[i] = best_attack_class
-                    
-            # SCS-ID's superior false positive reduction
-            elif original_pred != 0 and not attack_detected:
-                # Baseline predicted attack but SCS-ID sees no clear pattern
-                if np.mean(sample) < 1.5 and np.max(sample) < 3 and np.std(sample) < 1:
-                    # This clearly looks benign - SCS-ID corrects baseline error
-                    if np.random.random() > 0.7:  # 30% chance to correct
-                        improved_preds[i] = 0
-            
-            # SCS-ID maintains correct predictions better (less noise sensitivity)
-            elif original_pred != 0 and attack_detected and best_attack_class == original_pred:
-                # Both agree - SCS-ID reinforces correct detection (no change needed)
-                pass
-                
-        return improved_preds
+            return {
+                'features': X_test_sample.values if hasattr(X_test_sample, 'values') else X_test_sample,
+                'labels': y_test_sample.values if hasattr(y_test_sample, 'values') else y_test_sample,
+                'class_names': data.get('class_names', self.class_names),
+                'feature_names': data.get('feature_names', [])
+            }
+        except Exception as e:
+            print(f"Could not load real test data: {e}")
+            return None
 
 class NetworkIDSGui:
     """Main GUI Application"""
@@ -690,7 +733,7 @@ class NetworkIDSGui:
         attack_type = self.attack_var.get()
         anomaly_level = self.anomaly_var.get()
         
-        self.current_sample = self.simulator.generate_sample(attack_type, anomaly_level)
+        self.current_sample = self.simulator.generate_single_sample(attack_type, anomaly_level)
         
         # Display sample data
         self.sample_display.delete('1.0', tk.END)
@@ -725,7 +768,7 @@ class NetworkIDSGui:
                 self.results_display.insert(tk.END, f"{model_name.upper()} MODEL:\n")
                 self.results_display.insert(tk.END, f"  Predicted: {pred_class}\n")
                 self.results_display.insert(tk.END, f"  Confidence: {confidence:.4f} ({confidence*100:.2f}%)\n")
-                self.results_display.insert(tk.END, f"  Correct: {'✓' if pred_class == true_label else '✗'}\n\n")
+                self.results_display.insert(tk.END, f"  Correct: {'[OK]' if pred_class == true_label else '[X]'}\n\n")
                 
                 # Show top 3 probabilities
                 probs = result['probabilities'][0]
@@ -745,8 +788,8 @@ class NetworkIDSGui:
         self.batch_results.insert(tk.END, f"Batch Size: {batch_size}, Benign Ratio: {benign_ratio:.2f}\n")
         self.batch_results.insert(tk.END, "="*60 + "\n")
         
-        # Generate batch data
-        batch_data = self.simulator.generate_batch(batch_size, benign_ratio)
+        # Generate batch data (preferably real test data)
+        batch_data = self.simulator.generate_batch(batch_size, benign_ratio, use_real_data=True)
         samples = batch_data['features']
         true_labels = batch_data['labels']
         true_classes = batch_data['attack_names']
@@ -804,8 +847,8 @@ class NetworkIDSGui:
     def monitoring_loop(self):
         """Background monitoring loop"""
         while self.is_monitoring:
-            # Generate batch of samples
-            batch_data = self.simulator.generate_batch(20, 0.8)
+            # Generate batch of samples (use real test data)
+            batch_data = self.simulator.generate_batch(20, 0.8, use_real_data=True)
             samples = batch_data['features']
             true_labels = batch_data['labels']
             results = self.model_tester.predict(samples, 'both')
@@ -895,11 +938,11 @@ class NetworkIDSGui:
             comparison_text += "=" * 50 + "\n\n"
             
             # Load baseline results
-            with open('results/baseline/baseline_results.pkl', 'rb') as f:
+            with open('results/baseline_results.pkl', 'rb') as f:
                 baseline_data = pickle.load(f)
             
             # Load SCS-ID results
-            with open('results/scs_id/scs_id_optimized_results.pkl', 'rb') as f:
+            with open('results/scs_id_optimized_results.pkl', 'rb') as f:
                 scs_id_data = pickle.load(f)
             
             comparison_text += "BASELINE CNN MODEL:\n"
@@ -930,10 +973,10 @@ class NetworkIDSGui:
             comparison_text += "SCS-ID: Fire modules + ConvSeek blocks + DeepSeek feature selection\n\n"
             
             comparison_text += "KEY ADVANTAGES OF SCS-ID:\n"
-            comparison_text += "• Higher accuracy with fewer parameters\n"
-            comparison_text += "• Better feature selection through DeepSeek\n"
-            comparison_text += "• More efficient architecture for real-time deployment\n"
-            comparison_text += "• Improved generalization on diverse attack types\n"
+            comparison_text += "- Higher accuracy with fewer parameters\n"
+            comparison_text += "- Better feature selection through DeepSeek\n"
+            comparison_text += "- More efficient architecture for real-time deployment\n"
+            comparison_text += "- Improved generalization on diverse attack types\n"
             
             self.comparison_display.delete('1.0', tk.END)
             self.comparison_display.insert('1.0', comparison_text)

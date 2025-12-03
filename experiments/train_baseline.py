@@ -30,6 +30,7 @@ except ImportError:
         LEARNING_RATE = 1e-4
         EPOCHS = 25
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+        NUM_CLASSES = 15  # 15 attack types as defined in preprocessing
         
         os.makedirs(DATA_DIR, exist_ok=True)
         os.makedirs(RESULTS_DIR, exist_ok=True)

@@ -7,6 +7,14 @@ venv/
 *.dll
 *.lib
 
+# Exclude model files and processed data
+*.pth
+*.pkl
+
+# Exclude raw dataset files
+data/raw/
+data/raw/*
+
 # Large data files (over GitHub LFS 2GB limit)
 data/processed/train_data.csv
 

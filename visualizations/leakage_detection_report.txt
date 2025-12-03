@@ -1,0 +1,38 @@
+Data Leakage Detection Report
+========================================
+
+Generated: 2025-11-30 15:36:12
+
+LEAKAGE CHECK RESULTS:
+Train-Test Contamination: DETECTED
+Feature Leakage: 0 suspicious features
+Normalization Leakage: PREVENTED (scaler fitted only on training data)
+
+DETAILED FINDINGS:
+- Found 277 identical samples between train and test sets
+- Found 21 time-dependent features - ensure proper shuffling
+
+TEMPORAL FEATURES DETECTED:
+- Flow Duration
+- Flow Bytes/s
+- Flow Packets/s
+- Flow IAT Mean
+- Flow IAT Std
+- Flow IAT Max
+- Flow IAT Min
+- Fwd IAT Total
+- Fwd IAT Mean
+- Fwd IAT Std
+- Fwd IAT Max
+- Fwd IAT Min
+- Bwd IAT Total
+- Bwd IAT Mean
+- Bwd IAT Std
+- Bwd IAT Max
+- Bwd IAT Min
+- Subflow Fwd Packets
+- Subflow Fwd Bytes
+- Subflow Bwd Packets
+- Subflow Bwd Bytes
+
+Recommendation: Ensure data is properly shuffled and not time-ordered.

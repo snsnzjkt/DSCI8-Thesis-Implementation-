@@ -43,7 +43,7 @@ class OptimizedTrainer:
             print(f"   GPU: {torch.cuda.get_device_name(0)}")
     
     def load_data(self):
-        """Load and prepare data"""
+        """Load and prepare data with DeepSeek RL selected features"""
         print("\n📂 Loading preprocessed data...")
         processed_file = Path(config.DATA_DIR) / "processed" / "processed_data.pkl"
         
@@ -52,6 +52,40 @@ class OptimizedTrainer:
         
         with open(processed_file, 'rb') as f:
             data = pickle.load(f)
+        
+        # Load DeepSeek RL selected features
+        print("\n🧠 Loading DeepSeek RL selected features...")
+        deepseek_features_file = "top_42_features.pkl"
+        
+        if Path(deepseek_features_file).exists():
+            with open(deepseek_features_file, 'rb') as f:
+                deepseek_data = pickle.load(f)
+            
+            selected_indices = deepseek_data['selected_features']
+            selected_feature_names = deepseek_data['feature_names']
+            
+            print(f"   ✅ Found DeepSeek selected features: {len(selected_indices)} features")
+            print(f"   📊 Selected features: {selected_feature_names[:5]}...")
+            
+            # Apply feature selection to training and test data
+            if hasattr(data['X_train'], 'iloc'):
+                # If pandas DataFrame
+                data['X_train'] = data['X_train'].iloc[:, selected_indices]
+                data['X_test'] = data['X_test'].iloc[:, selected_indices]
+            else:
+                # If numpy array
+                data['X_train'] = data['X_train'][:, selected_indices]
+                data['X_test'] = data['X_test'][:, selected_indices]
+            
+            # Update feature names
+            data['feature_names'] = selected_feature_names
+            data['num_features'] = len(selected_indices)
+            
+            print(f"   ✅ Applied DeepSeek feature selection: {data['X_train'].shape[1]} features")
+            
+        else:
+            print(f"   ⚠️  DeepSeek features file not found: {deepseek_features_file}")
+            print("   ⚠️  Using full feature set - this may not match DeepSeek RL optimization!")
         
         # Convert to tensor, handling both numpy arrays and pandas DataFrames
         X_train = torch.FloatTensor(data['X_train'].values if hasattr(data['X_train'], 'values') else data['X_train'])
@@ -190,6 +224,10 @@ class OptimizedTrainer:
         y_prob = np.vstack(all_probs)
         y_true = np.concatenate(all_targets)
         
+        print(f"📊 Test set size: {len(y_true)} samples")
+        print(f"📊 Attack samples: {np.sum(y_true > 0)} ({np.sum(y_true > 0)/len(y_true)*100:.2f}%)")
+        print(f"📊 Benign samples: {np.sum(y_true == 0)} ({np.sum(y_true == 0)/len(y_true)*100:.2f}%)")
+        
         # Initialize threshold optimizer
         optimizer = ThresholdOptimizer(target_fpr=0.01)
         results = optimizer.optimize_threshold(y_true, y_prob, verbose=True)
@@ -200,8 +238,26 @@ class OptimizedTrainer:
         tn, fp, fn, tp = confusion_matrix(binary_true, binary_pred_default).ravel()
         original_fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
         
-        # Add original FPR to results
+        print(f"\n📈 Original model performance (default threshold):")
+        print(f"   FPR: {original_fpr:.6f} ({original_fpr*100:.4f}%)")
+        print(f"   TPR: {tp / (tp + fn) if (tp + fn) > 0 else 0:.6f}")
+        
+        # Add original FPR to results and calculate reduction
         results['original_fpr'] = original_fpr
+        
+        # Calculate optimized FPR and reduction percentage
+        if 'achieved_fpr' in results:
+            results['optimized_fpr'] = results['achieved_fpr']
+            if original_fpr > 0:
+                fpr_reduction = ((original_fpr - results['achieved_fpr']) / original_fpr) * 100
+                results['fpr_reduction_percentage'] = max(0, fpr_reduction)
+                print(f"\n📉 FPR Improvement:")
+                print(f"   Original FPR: {original_fpr:.6f} ({original_fpr*100:.4f}%)")
+                print(f"   Optimized FPR: {results['achieved_fpr']:.6f} ({results['achieved_fpr']*100:.4f}%)")
+                print(f"   FPR Reduction: {results['fpr_reduction_percentage']:.2f}%")
+            else:
+                results['fpr_reduction_percentage'] = 0
+                print(f"\n📉 Original FPR was already 0, no reduction possible")
         
         return results, y_prob, y_true
 
@@ -213,9 +269,9 @@ class OptimizedTrainer:
         # Load data
         (train_loader, val_loader, test_loader), num_classes, class_names = self.load_data()
         
-        # Create model
+        # Create model with dropout for regularization
         input_features = next(iter(train_loader))[0].shape[1]
-        model = OptimizedSCSID(input_features, num_classes).to(self.device)
+        model = OptimizedSCSID(input_features, num_classes, dropout_rate=0.3).to(self.device)
         
         # Training setup
         criterion = nn.CrossEntropyLoss()
@@ -268,6 +324,21 @@ class OptimizedTrainer:
         
         # Threshold optimization
         threshold_results, y_prob, y_true = self.optimize_threshold(model, test_loader)
+        
+        # Save threshold optimization plots
+        output_dir = f"{config.RESULTS_DIR}/scs_id_optimized/threshold_optimization"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        print(f"\n📊 Saving SCS-ID threshold optimization visualizations...")
+        optimizer = ThresholdOptimizer(target_fpr=0.01)
+        optimizer.optimize_threshold(y_true, y_prob, verbose=False)  # Re-run to set up plots
+        optimizer.plot_roc_curve(
+            save_path=f"{output_dir}/scs_id_roc_curve_optimized.png"
+        )
+        optimizer.plot_threshold_analysis(
+            save_path=f"{output_dir}/scs_id_threshold_analysis.png"
+        )
+        plt.close('all')
         
         # Get model statistics
         stats = model.get_compression_stats()
@@ -392,11 +463,13 @@ class OptimizedTrainer:
             f.write(f"\nThreshold Optimization Results:\n")
             f.write(f"  Optimal Threshold: {threshold_results.get('optimal_threshold', 'N/A')}\n")
             f.write(f"  Original FPR: {threshold_results.get('original_fpr', 'N/A')}\n")
-            f.write(f"  Optimized FPR: {threshold_results.get('optimized_fpr', 'N/A')}\n")
+            f.write(f"  Optimized FPR: {threshold_results.get('optimized_fpr', threshold_results.get('achieved_fpr', 'N/A'))}\n")
             if 'fpr_reduction_percentage' in threshold_results:
                 f.write(f"  FPR Reduction: {threshold_results['fpr_reduction_percentage']:.2f}%\n")
             else:
                 f.write("  FPR Reduction: N/A\n")
+            if 'achieved_tpr' in threshold_results:
+                f.write(f"  Optimized TPR: {threshold_results['achieved_tpr']:.4f} ({threshold_results['achieved_tpr']*100:.2f}%)\n")
         
         print("\n✅ Training Complete!")
         print(f"Test Accuracy: {accuracy:.4f} ({accuracy*100:.2f}%)")

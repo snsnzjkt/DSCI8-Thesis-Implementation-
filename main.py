@@ -136,7 +136,7 @@ def run_explainability_analysis():
         import pickle
         import numpy as np
         # from models.lime_shap_explainer import HybridLIMESHAPExplainer  # Commented out - might not proceed with this
-        from models.scs_id import create_scs_id_model
+        from models.scs_id_optimized import OptimizedSCSID
         
         # Load processed data
         with open(f"{config.DATA_DIR}/processed/processed_data.pkl", 'rb') as f:
@@ -148,9 +148,10 @@ def run_explainability_analysis():
         class_names = data['class_names']
         
         # Load trained SCS-ID model
-        model = create_scs_id_model(
+        model = OptimizedSCSID(
             input_features=config.SELECTED_FEATURES,
-            num_classes=len(class_names)
+            num_classes=len(class_names),
+            dropout_rate=0.3
         )
         model.load_state_dict(torch.load(f"{config.RESULTS_DIR}/best_scs_id_model.pth"))
         model.eval()

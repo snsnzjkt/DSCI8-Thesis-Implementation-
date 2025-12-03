@@ -16,11 +16,15 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import deque
 import random
+import os
+import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
 from sklearn.model_selection import cross_val_score
 import warnings
 import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import pearsonr
 warnings.filterwarnings('ignore')
 
 
@@ -652,6 +656,216 @@ class DeepSeekRL:
         print(f"DeepSeekRL moved to device: {device}")
 
 
+def visualize_top_features(X, y, feature_names=None, top_k=48, selected_features=None, save_path=None):
+    """
+    Generate comprehensive visualizations for top K features
+    
+    Args:
+        X: Feature matrix (numpy array)
+        y: Labels (numpy array)
+        feature_names: List of feature names
+        top_k: Number of top features to analyze (default: 48)
+        selected_features: Optional list of selected feature indices
+        save_path: Optional path to save the visualization
+    """
+    print(f"\n🎨 Generating visualizations for top {top_k} features...")
+    
+    # Ensure we have feature names
+    if feature_names is None:
+        feature_names = [f'Feature_{i}' for i in range(X.shape[1])]
+    
+    # Calculate feature importance using Random Forest
+    rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
+    rf.fit(X, y)
+    feature_importance = rf.feature_importances_
+    
+    # Get top K features by importance
+    top_indices = np.argsort(feature_importance)[::-1][:top_k]
+    top_names = [feature_names[i] for i in top_indices]
+    top_importance = feature_importance[top_indices]
+    
+    # Create comprehensive visualization
+    fig = plt.figure(figsize=(20, 24))
+    
+    # 1. Feature Importance Bar Chart
+    plt.subplot(4, 2, 1)
+    colors = plt.cm.get_cmap('viridis')(np.linspace(0, 1, len(top_indices)))
+    bars = plt.bar(range(len(top_indices)), top_importance, color=colors)
+    plt.title(f'Top {top_k} Features by Importance', fontsize=14, fontweight='bold')
+    plt.xlabel('Feature Rank')
+    plt.ylabel('Importance Score')
+    plt.xticks(range(0, len(top_indices), max(1, len(top_indices)//10)))
+    
+    # Add importance values on bars
+    for i, (bar, imp) in enumerate(zip(bars, top_importance)):
+        if i % max(1, len(top_indices)//10) == 0:  # Show every nth label
+            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.001,
+                    f'{imp:.3f}', ha='center', va='bottom', fontsize=8)
+    
+    # 2. Feature Distribution Heatmap (sample of top 20)
+    plt.subplot(4, 2, 2)
+    sample_features = min(20, top_k)
+    X_top_sample = X[:1000, top_indices[:sample_features]]  # Sample for performance
+    
+    # Normalize for better visualization
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_normalized = scaler.fit_transform(X_top_sample)
+    
+    sns.heatmap(X_normalized.T, cmap='RdYlBu_r', center=0, 
+                yticklabels=[name[:15] + '...' if len(name) > 15 else name 
+                           for name in top_names[:sample_features]],
+                xticklabels=False, cbar_kws={'label': 'Normalized Value'})
+    plt.title(f'Feature Value Heatmap (Top {sample_features}, 1000 samples)', fontsize=14, fontweight='bold')
+    plt.ylabel('Features')
+    
+    # 3. Class Distribution
+    plt.subplot(4, 2, 3)
+    unique_classes, class_counts = np.unique(y, return_counts=True)
+    plt.pie(class_counts, labels=[f'Class {c}' for c in unique_classes], autopct='%1.1f%%')
+    plt.title('Class Distribution', fontsize=14, fontweight='bold')
+    
+    # 4. Feature Correlation Matrix (top 15 for readability)
+    plt.subplot(4, 2, 4)
+    corr_features = min(15, top_k)
+    X_corr = X[:, top_indices[:corr_features]]
+    corr_matrix = np.corrcoef(X_corr.T)
+    
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0,
+                xticklabels=[name[:10] + '...' if len(name) > 10 else name 
+                           for name in top_names[:corr_features]],
+                yticklabels=[name[:10] + '...' if len(name) > 10 else name 
+                           for name in top_names[:corr_features]],
+                fmt='.2f')
+    plt.title(f'Feature Correlation Matrix (Top {corr_features})', fontsize=14, fontweight='bold')
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    
+    # 5. Feature Value Distributions (Box plots for top 12)
+    plt.subplot(4, 2, 5)
+    box_features = min(12, top_k)
+    X_box = X[:5000, top_indices[:box_features]]  # Sample for performance
+    
+    bp = plt.boxplot(X_box)
+    plt.xticks(range(1, box_features + 1), [name[:8] + '...' if len(name) > 8 else name 
+                                           for name in top_names[:box_features]])
+    plt.title(f'Feature Value Distributions (Top {box_features})', fontsize=14, fontweight='bold')
+    plt.xticks(rotation=45, ha='right')
+    plt.ylabel('Feature Values')
+    
+    # 6. Selected Features Highlight (if provided)
+    plt.subplot(4, 2, 6)
+    if selected_features is not None:
+        # Show which of the top features were selected
+        selected_in_top = [i for i in top_indices if i in selected_features]
+        selected_mask = [i in selected_features for i in top_indices]
+        
+        colors = ['red' if selected else 'lightblue' for selected in selected_mask]
+        plt.bar(range(len(top_indices)), top_importance, color=colors)
+        plt.title(f'Selected vs Top Features (Red = Selected)', fontsize=14, fontweight='bold')
+        plt.xlabel('Feature Rank')
+        plt.ylabel('Importance Score')
+        
+        # Add legend
+        from matplotlib.patches import Patch
+        legend_elements = [Patch(facecolor='red', label=f'Selected ({len(selected_in_top)})'),
+                          Patch(facecolor='lightblue', label=f'Not Selected ({top_k - len(selected_in_top)})')]
+        plt.legend(handles=legend_elements)
+        
+        print(f"  📊 {len(selected_in_top)} out of top {top_k} features were selected by DeepSeek RL")
+    else:
+        # Show feature importance cumulative
+        cumsum = np.cumsum(top_importance)
+        plt.plot(range(len(cumsum)), cumsum, 'b-', linewidth=2)
+        plt.fill_between(range(len(cumsum)), cumsum, alpha=0.3)
+        plt.title('Cumulative Feature Importance', fontsize=14, fontweight='bold')
+        plt.xlabel('Number of Features')
+        plt.ylabel('Cumulative Importance')
+        plt.grid(True, alpha=0.3)
+    
+    # 7. Feature Statistics Table (show top 15)
+    plt.subplot(4, 2, 7)
+    plt.axis('off')
+    stats_features = min(15, top_k)
+    
+    # Calculate statistics for top features
+    stats_data = []
+    for i, idx in enumerate(top_indices[:stats_features]):
+        feature_values = X[:, idx]
+        stats_data.append([
+            f"{i+1}",
+            top_names[i][:20] + ('...' if len(top_names[i]) > 20 else ''),
+            f"{top_importance[i]:.4f}",
+            f"{np.mean(feature_values):.2f}",
+            f"{np.std(feature_values):.2f}",
+            "✓" if selected_features and idx in selected_features else "✗"
+        ])
+    
+    # Create table
+    table = plt.table(cellText=stats_data,
+                     colLabels=['Rank', 'Feature Name', 'Importance', 'Mean', 'Std', 'Selected'],
+                     cellLoc='center',
+                     loc='center',
+                     bbox=[0, 0, 1, 1])
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1, 1.5)
+    
+    # Style the table
+    for i in range(len(stats_data) + 1):
+        for j in range(6):
+            cell = table[(i, j)]
+            if i == 0:  # Header
+                cell.set_facecolor('#4CAF50')
+                cell.set_text_props(weight='bold', color='white')
+            else:
+                cell.set_facecolor('#f0f0f0' if i % 2 == 0 else 'white')
+    
+    plt.title(f'Top {stats_features} Features Statistics', fontsize=14, fontweight='bold', y=0.98)
+    
+    # 8. Feature Name List (remaining space)
+    plt.subplot(4, 2, 8)
+    plt.axis('off')
+    
+    # Create a text list of all top features
+    text_content = f"Complete Top {top_k} Features List:\n\n"
+    for i, (idx, name, imp) in enumerate(zip(top_indices, top_names, top_importance)):
+        selected_mark = " ✓" if selected_features and idx in selected_features else ""
+        text_content += f"{i+1:2d}. {name[:35]:<35} ({imp:.4f}){selected_mark}\n"
+        if (i + 1) % 24 == 0 and i < len(top_indices) - 1:  # Break for readability
+            text_content += "\n--- Continued ---\n\n"
+    
+    plt.text(0.05, 0.95, text_content, transform=plt.gca().transAxes, 
+             fontsize=8, verticalalignment='top', fontfamily='monospace',
+             bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+    
+    plt.tight_layout()
+    
+    # Save if path provided
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"  💾 Visualization saved to: {save_path}")
+    
+    plt.show()
+    
+    # Return feature analysis results
+    results = {
+        'top_features': list(zip(top_indices, top_names, top_importance)),
+        'feature_stats': {
+            'total_features': X.shape[1],
+            'analyzed_features': top_k,
+            'selected_overlap': len([i for i in top_indices if selected_features and i in selected_features]) if selected_features else 0
+        }
+    }
+    
+    print(f"  ✅ Analysis complete! Top {top_k} features visualized.")
+    if selected_features:
+        overlap = results['feature_stats']['selected_overlap']
+        print(f"  📈 DeepSeek RL selected {overlap}/{top_k} ({overlap/top_k*100:.1f}%) of the most important features")
+    
+    return results
+
+
 def evaluate_feature_importance(X, y, selected_features=None, top_k=20, feature_names=None):
     """
     Evaluate feature importance using multiple methods
@@ -735,27 +949,67 @@ if __name__ == "__main__":
     print("🧪 DeepSeek RL Feature Selection - Testing")
     print("="*70 + "\n")
     
-    # Generate sample data (simulating CIC-IDS2017 structure)
-    np.random.seed(42)
-    n_samples = 2000
-    n_features = 78  # As per thesis
+    # Load processed data from pickle file
+    processed_data_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'processed', 'processed_data.pkl')
     
-    print(f"Generating synthetic dataset...")
-    print(f"  Samples: {n_samples}")
-    print(f"  Features: {n_features}")
-    print(f"  Classes: 15 (multi-class intrusion detection)\n")
+    try:
+        print(f"Loading processed CIC-IDS2017 data from {processed_data_path}...")
+        with open(processed_data_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        X_train = data['X_train']
+        y_train = data['y_train']
+        X_val = data['X_val']
+        y_val = data['y_val']
+        
+        print(f"✅ Successfully loaded real CIC-IDS2017 dataset:")
+        print(f"  Training samples: {X_train.shape[0]}")
+        print(f"  Validation samples: {X_val.shape[0]}")
+        print(f"  Features: {X_train.shape[1]}")
+        print(f"  Training classes: {len(np.unique(y_train))}")
+        print(f"  Validation classes: {len(np.unique(y_val))}\n")
+        
+    except FileNotFoundError:
+        print(f"⚠️  Processed data file not found at {processed_data_path}")
+        print(f"Falling back to synthetic data generation...\n")
+        
+        # Fallback to synthetic data
+        np.random.seed(42)
+        n_samples = 2000
+        n_features = 78  # As per thesis
+        
+        print(f"Generating synthetic dataset...")
+        print(f"  Samples: {n_samples}")
+        print(f"  Features: {n_features}")
+        print(f"  Classes: 15 (multi-class intrusion detection)\n")
+        
+        X = np.random.randn(n_samples, n_features)
+        y = np.random.randint(0, 15, n_samples)
+        
+        # Split data (70% train, 30% validation)
+        split_idx = int(0.7 * n_samples)
+        X_train, X_val = X[:split_idx], X[split_idx:]
+        y_train, y_val = y[:split_idx], y[split_idx:]
+        
+        print(f"Synthetic data split:")
+        print(f"  Training: {len(X_train)} samples")
+        print(f"  Validation: {len(X_val)} samples\n")
     
-    X = np.random.randn(n_samples, n_features)
-    y = np.random.randint(0, 15, n_samples)
-    
-    # Split data (70% train, 30% validation)
-    split_idx = int(0.7 * n_samples)
-    X_train, X_val = X[:split_idx], X[split_idx:]
-    y_train, y_val = y[:split_idx], y[split_idx:]
-    
-    print(f"Data split:")
-    print(f"  Training: {len(X_train)} samples")
-    print(f"  Validation: {len(X_val)} samples\n")
+    except Exception as e:
+        print(f"❌ Error loading processed data: {e}")
+        print(f"Falling back to synthetic data generation...\n")
+        
+        # Fallback to synthetic data
+        np.random.seed(42)
+        n_samples = 2000
+        n_features = 78
+        
+        X = np.random.randn(n_samples, n_features)
+        y = np.random.randint(0, 15, n_samples)
+        
+        split_idx = int(0.7 * n_samples)
+        X_train, X_val = X[:split_idx], X[split_idx:]
+        y_train, y_val = y[:split_idx], y[split_idx:]
     
     # Initialize and train DeepSeek RL
     deepseek = DeepSeekRL(max_features=42)
@@ -783,12 +1037,42 @@ if __name__ == "__main__":
     print("Generating training visualizations...")
     deepseek.plot_training_history(save_path='deepseek_rl_training.png')
     
+    # Generate comprehensive feature visualizations
+    print("\n🎨 Generating comprehensive feature visualizations...")
+    try:
+        # Use real feature names if available from processed data
+        if 'data' in locals() and 'feature_names' in data:
+            vis_feature_names = data['feature_names']
+            print("Using real CIC-IDS2017 feature names")
+        else:
+            vis_feature_names = [f'Feature_{i}' for i in range(X_train.shape[1])]
+            print("Using generic feature names")
+            
+        # Create visualizations for top 48 features
+        visualization_results = visualize_top_features(
+            X_train[:10000], y_train[:10000], 
+            feature_names=vis_feature_names, 
+            top_k=48,
+            selected_features=selected_features,
+            save_path='results/top_48_features_analysis.png'
+        )
+        
+        print(f"✅ Feature visualizations generated successfully!")
+        print(f"   - Analyzed top {visualization_results['feature_stats']['analyzed_features']} features")
+        print(f"   - Selected {visualization_results['feature_stats']['selected_overlap']} high-importance features")
+        
+    except Exception as e:
+        print(f"⚠️ Feature visualization failed: {e}")
+        import traceback
+        traceback.print_exc()
+
     # Evaluate feature importance
     print("\nEvaluating feature importance...")
     importance_results = evaluate_feature_importance(
-        X, y, 
+        X_train, y_train, 
         selected_features=selected_features,
-        top_k=10
+        top_k=15,
+        feature_names=vis_feature_names if 'vis_feature_names' in locals() else None
     )
     
     # Save model

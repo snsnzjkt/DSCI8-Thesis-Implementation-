@@ -8,7 +8,7 @@ try:
 except ImportError:
     class Config:
         NUM_FEATURES = 78
-        NUM_CLASSES = 15
+        NUM_CLASSES = 15  # 15 attack types as defined in preprocessing
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
         BASELINE_FILTERS = [120, 60, 30]
     config = Config()
@@ -24,10 +24,6 @@ class BaselineCNN(nn.Module):
         
         self.input_features = input_features
         self.num_classes = num_classes
-        
-        # Track model metrics
-        from models.model_metrics import ModelMetricsTracker
-        self.metrics_tracker = ModelMetricsTracker()
         
         # Since we have 1D features, we'll use 1D convolutions
         # Following Ayeni et al. approach with 3 conv layers
@@ -80,7 +76,10 @@ class BaselineCNN(nn.Module):
         Returns:
             Output tensor of shape (batch_size, num_classes)
         """
-        # Input is already (batch_size, 1, features)
+        # Reshape input: [batch_size, features] -> [batch_size, 1, features]
+        if len(x.shape) == 2:
+            x = x.unsqueeze(1)
+        
         # First convolutional block
         x = self.conv1(x)
         x = self.batch_norm1(x)

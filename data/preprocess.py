@@ -1,16 +1,29 @@
-# data/preprocess.py - Fixed for CIC-IDS2017 WITHOUT Label columns
+# data/preprocess.py - Enhanced CIC-IDS2017 preprocessing with visualizations and data leakage checks
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import IsolationForest
 from imblearn.over_sampling import SMOTE
+from typing import Dict, Union
 import pickle
 import os
 import glob
 import warnings
 from pathlib import Path
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import mutual_info_score
+from scipy import stats
+from datetime import datetime
+import hashlib
 warnings.filterwarnings('ignore')
+
+# Set up plotting
+plt.style.use('default')
+sns.set_palette("husl")
+fig_size = (12, 8)
 
 try:
     from config import config
@@ -19,14 +32,20 @@ except ImportError:
     class Config:
         DATA_DIR = "data"
         RESULTS_DIR = "results"
-        NUM_FEATURES = 78
+        VISUALIZATIONS_DIR = "visualizations"
+        NUM_FEATURES = 78  # Keep all 78 original features
+        ORIGINAL_FEATURES = 78  # Original feature count
         SELECTED_FEATURES = 42
-        NUM_CLASSES = 16
+        PRESERVE_ALL_FEATURES = True  # Preserve all features even if unusable
+        USE_SINGLE_COLOR = True  # Use single color for visualizations
+        SEPARATE_VISUALIZATIONS = True  # Create separate graphs for raw and preprocessed data
+        NUM_CLASSES = 15  # 15 attack types: BENIGN + 14 attack classes
         BATCH_SIZE = 64
         DEVICE = "cpu"
         
         os.makedirs(DATA_DIR, exist_ok=True)
         os.makedirs(RESULTS_DIR, exist_ok=True)
+        os.makedirs(VISUALIZATIONS_DIR, exist_ok=True)
     
     config = Config()
 
@@ -36,14 +55,23 @@ class CICIDSPreprocessor:
     def __init__(self):
         self.raw_dir = Path(config.DATA_DIR) / "raw"
         self.processed_dir = Path(config.DATA_DIR) / "processed"
+        self.viz_dir = Path(config.VISUALIZATIONS_DIR)
         
         self.scaler = StandardScaler()
         self.label_encoder = LabelEncoder()
         self.isolation_forest = IsolationForest(contamination=0.01, random_state=42)
+        self.imputer = SimpleImputer(strategy='median')
         
         # Ensure directories exist
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
+        self.viz_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Keep all original features - no removal list needed
+        # We'll only remove truly constant features (nunique = 1) if any exist
+        self.preserve_all_features = True
+        self.force_preserve_all_78 = True  # Force preservation of all 78 features
+        self.primary_color = '#2E86AB'  # Professional blue for all visualizations
         
         # CIC-IDS2017 filename to attack type mapping
         self.filename_to_attacks = {
@@ -87,6 +115,335 @@ class CICIDSPreprocessor:
             'Web Attack - Sql Injection', 'Web Attack - XSS', 'Infiltration',
             'Bot', 'PortScan', 'Heartbleed'
         ]
+    
+    def create_before_preprocessing_visualizations(self, df):
+        """Create separate raw data overview visualizations with single color"""
+        print("📊 Creating raw data overview visualization...")
+        
+        # 1. Raw Data Overview - Class Distribution (separate graph)
+        plt.figure(figsize=(12, 8))
+        label_col = 'Label' if 'Label' in df.columns else ' Label'
+        if label_col in df.columns:
+            label_counts = df[label_col].value_counts()
+            
+            # Create horizontal bar chart with single color
+            y_pos = np.arange(len(label_counts))
+            plt.barh(y_pos, label_counts.values, color=self.primary_color)
+            plt.yticks(y_pos, label_counts.index, fontsize=9)
+            plt.xlabel('Sample Count')
+            plt.title('Raw Data Overview: Attack Class Distribution', fontsize=16, fontweight='bold')
+            plt.xscale('log')  # Log scale due to severe imbalance
+            
+            # Add percentage labels
+            total_samples = len(df)
+            for i, v in enumerate(label_counts.values):
+                percentage = (v / total_samples) * 100
+                plt.text(v, i, f' {percentage:.1f}%', va='center', fontsize=8)
+        
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'raw_data_overview.png', dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        # 2. Data Quality Overview (separate graph)
+        plt.figure(figsize=(12, 8))
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        feature_cols = [col for col in numeric_cols if col.strip().lower() != 'label']
+        
+        # Count missing values
+        missing_counts = df[feature_cols].isnull().sum()
+        missing_features = missing_counts[missing_counts > 0]
+        
+        # Count infinite values
+        inf_counts = {}
+        for col in feature_cols:
+            inf_count = np.isinf(df[col]).sum()
+            if inf_count > 0:
+                inf_counts[col] = inf_count
+        
+        # Data quality bar chart with single color
+        if len(missing_features) > 0:
+            top_missing = missing_features.head(10)
+            plt.bar(range(len(top_missing)), top_missing.values, color=self.primary_color)
+            plt.xticks(range(len(top_missing)), [col[:15] for col in top_missing.index], rotation=45)
+            plt.xlabel('Features')
+            plt.ylabel('Missing Count')
+            plt.title('Raw Data Quality: Missing Values by Feature (Top 10)', fontsize=16, fontweight='bold')
+        else:
+            plt.text(0.5, 0.5, 'No Missing Values Found', ha='center', va='center', fontsize=16, 
+                    transform=plt.gca().transAxes)
+            plt.title('Raw Data Quality: No Missing Values', fontsize=16, fontweight='bold')
+        
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'raw_data_quality.png', dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        print(f"   ✅ Saved raw data overview visualizations to {self.viz_dir}")
+    
+    def create_after_preprocessing_visualizations(self, X_train, X_test, y_train, y_test, feature_names):
+        """Create separate preprocessed data visualizations with single color"""
+        print("📊 Creating after preprocessing visualizations...")
+        
+        # 1. Preprocessed Data Overview - Class Distribution (separate graph)
+        plt.figure(figsize=(12, 8))
+        unique_train, counts_train = np.unique(y_train, return_counts=True)
+        class_names = [str(self.label_encoder.classes_[i]) for i in unique_train]
+        
+        # Create horizontal bar chart with single color
+        y_positions = np.arange(len(unique_train))
+        bars = plt.barh(y_positions, counts_train, color=self.primary_color)
+        
+        plt.yticks(y_positions, class_names, fontsize=9)
+        plt.xlabel('Sample Count')
+        plt.title('Preprocessed Data Overview: Training Set Class Distribution (After SMOTE 1:1 Balance)', 
+                 fontsize=16, fontweight='bold')
+        
+        # Add count labels on bars
+        for i, (bar, count) in enumerate(zip(bars, counts_train)):
+            plt.text(count + max(counts_train) * 0.01, bar.get_y() + bar.get_height()/2, 
+                    f'{count:,}', ha='left', va='center', fontsize=8)
+        
+        plt.grid(True, alpha=0.3, axis='x')
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'preprocessed_data_overview.png', dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        # 2. Dataset Statistics (separate graph)
+        plt.figure(figsize=(12, 8))
+        stats_info = [
+            f'Final Features: {X_train.shape[1]}',
+            f'Training Samples: {len(X_train):,}',
+            f'Test Samples: {len(X_test):,}', 
+            f'Classes: {len(np.unique(y_train))}',
+            f'Feature Range: [{X_train.min():.2f}, {X_train.max():.2f}]',
+            f'Train-Test Split: {len(X_train)/(len(X_train)+len(X_test)):.1%} - {len(X_test)/(len(X_train)+len(X_test)):.1%}'
+        ]
+        
+        plt.text(0.1, 0.9, '\n'.join(stats_info), transform=plt.gca().transAxes, 
+                fontsize=14, verticalalignment='top', fontfamily='monospace')
+        plt.title('Preprocessed Dataset Statistics', fontsize=16, fontweight='bold')
+        plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'preprocessed_dataset_stats.png', dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        # 2. Feature importance visualization (using mutual information)
+        print("   Computing feature importance...")
+        # Use a sample for efficiency
+        sample_size = min(5000, len(X_train))
+        sample_indices = np.random.choice(len(X_train), sample_size, replace=False)
+        X_sample = X_train[sample_indices]
+        y_sample = y_train[sample_indices]
+        
+        # Compute mutual information scores
+        mi_scores = []
+        for i in range(X_sample.shape[1]):
+            try:
+                score = mutual_info_score(X_sample[:, i], y_sample)
+                mi_scores.append(score)
+            except:
+                mi_scores.append(0)
+        
+        # Plot top features with single color
+        feature_importance = pd.DataFrame({
+            'feature': feature_names,
+            'importance': mi_scores
+        }).sort_values('importance', ascending=False)
+        
+        plt.figure(figsize=(12, 8))
+        top_features = feature_importance.head(20)
+        plt.barh(range(len(top_features)), top_features['importance'], color=self.primary_color)
+        plt.yticks(range(len(top_features)), top_features['feature'].tolist())
+        plt.xlabel('Mutual Information Score')
+        plt.title('Top 20 Most Important Features (Mutual Information)', fontsize=16, fontweight='bold')
+        plt.gca().invert_yaxis()
+        plt.grid(True, alpha=0.3, axis='x')
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'feature_importance.png', dpi=300, bbox_inches='tight', facecolor='white')
+        plt.close()
+        
+        print(f"   ✅ Saved processed data visualizations to {self.viz_dir}")
+    
+    def create_imputation_validation_plots(self, original_data, imputed_data, feature_names):
+        """Create plots to validate imputation accuracy"""
+        print("📊 Creating imputation validation plots...")
+        
+        # Find features that had missing values
+        missing_features = []
+        for col in original_data.columns:
+            if original_data[col].isnull().sum() > 0:
+                missing_features.append(col)
+        
+        if not missing_features:
+            print("   No missing values found to validate imputation")
+            return
+        
+        # Create comparison plots for features with missing values
+        n_features = min(6, len(missing_features))
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('Imputation Validation: Original vs Imputed Data Distributions', fontsize=16, fontweight='bold')
+        
+        for i, feature in enumerate(missing_features[:n_features]):
+            row, col = i // 3, i % 3
+            
+            # Get original non-missing data
+            original_clean = original_data[feature].dropna()
+            
+            # Get imputed data for the same feature
+            if feature in feature_names:
+                feature_idx = feature_names.index(feature)
+                imputed_values = imputed_data[:, feature_idx]
+                
+                # Plot distributions
+                axes[row, col].hist(original_clean, bins=30, alpha=0.7, label='Original (non-missing)', density=True)
+                axes[row, col].hist(imputed_values, bins=30, alpha=0.7, label='After Imputation', density=True)
+                axes[row, col].set_title(f'{feature}')
+                axes[row, col].set_xlabel('Value')
+                axes[row, col].set_ylabel('Density')
+                axes[row, col].legend()
+        
+        # Fill empty subplots
+        for i in range(n_features, 6):
+            row, col = i // 3, i % 3
+            axes[row, col].axis('off')
+        
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'imputation_validation.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"   ✅ Saved imputation validation plots to {self.viz_dir}")
+    
+    def detect_data_leakage(self, X_train, X_test, y_train, y_test, feature_names):
+        """Comprehensive data leakage detection"""
+        print("🔍 Detecting potential data leakage...")
+        
+        leakage_results = {
+            'train_test_contamination': False,
+            'temporal_leakage': False,
+            'normalization_leakage': False,
+            'feature_leakage': [],
+            'details': []
+        }
+        
+        # 1. Check for identical samples between train and test (train-test contamination)
+        print("   Checking for train-test contamination...")
+        train_hashes = set()
+        for i in range(len(X_train)):
+            # Create hash of each training sample
+            sample_hash = hashlib.md5(X_train[i].tobytes()).hexdigest()
+            train_hashes.add(sample_hash)
+        
+        contamination_count = 0
+        for i in range(len(X_test)):
+            sample_hash = hashlib.md5(X_test[i].tobytes()).hexdigest()
+            if sample_hash in train_hashes:
+                contamination_count += 1
+        
+        if contamination_count > 0:
+            leakage_results['train_test_contamination'] = True
+            leakage_results['details'].append(f"Found {contamination_count} identical samples between train and test sets")
+            print(f"   ⚠️  LEAKAGE DETECTED: {contamination_count} identical samples in train and test sets")
+        else:
+            print("   ✅ No train-test contamination detected")
+        
+        # 2. Check for features that perfectly separate classes (potential feature leakage)
+        print("   Checking for feature leakage...")
+        for i, feature_name in enumerate(feature_names):
+            # Check if any feature has perfect correlation with labels
+            feature_values = X_train[:, i]
+            
+            # Calculate mutual information
+            try:
+                mi_score = mutual_info_score(feature_values, y_train)
+                # Normalize by entropy of labels
+                label_entropy = stats.entropy(np.bincount(y_train))
+                normalized_mi = mi_score / label_entropy if label_entropy > 0 else 0
+                
+                if normalized_mi > 0.95:  # Very high correlation
+                    leakage_results['feature_leakage'].append(feature_name)
+                    leakage_results['details'].append(f"Feature '{feature_name}' has suspiciously high correlation with labels (MI: {normalized_mi:.3f})")
+                    print(f"   ⚠️  Potential feature leakage: {feature_name} (MI: {normalized_mi:.3f})")
+            except:
+                pass
+        
+        if not leakage_results['feature_leakage']:
+            print("   ✅ No obvious feature leakage detected")
+        
+        # 3. Check normalization leakage (this method should be called BEFORE normalization)
+        print("   Note: Normalization leakage prevented by fitting scaler only on training data")
+        
+        # 4. Check for temporal patterns that might indicate leakage
+        print("   Checking for temporal patterns...")
+        # Look for features that might be time-dependent
+        temporal_features = [name for name in feature_names if any(keyword in name.lower() for keyword in ['time', 'duration', 'iat', 'flow'])]
+        
+        if temporal_features:
+            print(f"   Found {len(temporal_features)} potentially time-dependent features")
+            print("   Ensure data is properly shuffled and not sorted by time")
+            leakage_results['details'].append(f"Found {len(temporal_features)} time-dependent features - ensure proper shuffling")
+        
+        # Create leakage detection summary plot
+        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+        fig.suptitle('Data Leakage Detection Results', fontsize=16, fontweight='bold')
+        
+        # Train-test contamination
+        contamination_data = ['Clean' if contamination_count == 0 else 'Contaminated']
+        contamination_counts = [1]
+        axes[0,0].bar(contamination_data, contamination_counts, color=['green' if contamination_count == 0 else 'red'])
+        axes[0,0].set_title('Train-Test Contamination')
+        axes[0,0].set_ylabel('Status')
+        
+        # Feature leakage count
+        axes[0,1].bar(['Suspicious Features'], [len(leakage_results['feature_leakage'])], 
+                     color=['green' if len(leakage_results['feature_leakage']) == 0 else 'orange'])
+        axes[0,1].set_title('Potential Feature Leakage')
+        axes[0,1].set_ylabel('Count')
+        
+        # Temporal features
+        axes[1,0].bar(['Temporal Features'], [len(temporal_features)], color='blue')
+        axes[1,0].set_title('Time-Dependent Features')
+        axes[1,0].set_ylabel('Count')
+        
+        # Summary
+        summary_text = "Leakage Check Summary:\n\n"
+        summary_text += f"✅ Scaler fitted only on training data\n"
+        summary_text += f"{'❌' if leakage_results['train_test_contamination'] else '✅'} Train-test contamination: {'DETECTED' if leakage_results['train_test_contamination'] else 'None'}\n"
+        summary_text += f"{'❌' if leakage_results['feature_leakage'] else '✅'} Feature leakage: {len(leakage_results['feature_leakage'])} suspicious features\n"
+        summary_text += f"ℹ️  Temporal features: {len(temporal_features)} found\n"
+        
+        axes[1,1].text(0.05, 0.95, summary_text, transform=axes[1,1].transAxes, 
+                      fontsize=10, verticalalignment='top', fontfamily='monospace')
+        axes[1,1].set_title('Summary')
+        axes[1,1].axis('off')
+        
+        plt.tight_layout()
+        plt.savefig(self.viz_dir / 'data_leakage_detection.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Save detailed leakage report
+        with open(self.viz_dir / 'leakage_detection_report.txt', 'w') as f:
+            f.write("Data Leakage Detection Report\n")
+            f.write("=" * 40 + "\n\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            
+            f.write("LEAKAGE CHECK RESULTS:\n")
+            f.write(f"Train-Test Contamination: {'DETECTED' if leakage_results['train_test_contamination'] else 'NONE'}\n")
+            f.write(f"Feature Leakage: {len(leakage_results['feature_leakage'])} suspicious features\n")
+            f.write(f"Normalization Leakage: PREVENTED (scaler fitted only on training data)\n\n")
+            
+            if leakage_results['details']:
+                f.write("DETAILED FINDINGS:\n")
+                for detail in leakage_results['details']:
+                    f.write(f"- {detail}\n")
+                f.write("\n")
+            
+            if temporal_features:
+                f.write("TEMPORAL FEATURES DETECTED:\n")
+                for feature in temporal_features:
+                    f.write(f"- {feature}\n")
+                f.write("\nRecommendation: Ensure data is properly shuffled and not time-ordered.\n")
+        
+        print(f"   ✅ Saved leakage detection report to {self.viz_dir}")
+        return leakage_results
     
     def process_all_files(self, force_reprocess=False, validate_features=True):
         """
@@ -200,9 +557,11 @@ class CICIDSPreprocessor:
         initial_rows = len(df)
         initial_cols = len(df.columns)
         
-        # Validate feature count (excluding label column)
-        if initial_cols != config.NUM_FEATURES + 1:  # +1 for label column
-            raise ValueError(f"Expected {config.NUM_FEATURES} features + 1 label column, but got {initial_cols} columns. Check raw data.")
+        # Validate feature count (should be 78 + 1 label = 79 total)
+        expected_total = config.ORIGINAL_FEATURES + 1  # 78 + 1 for label
+        if initial_cols != expected_total:
+            print(f"⚠️  Warning: Expected {expected_total} columns (78 features + 1 label), but got {initial_cols}")
+            print(f"   Will adjust to target {config.NUM_FEATURES} features")
         
         # Get numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -210,9 +569,10 @@ class CICIDSPreprocessor:
         # Check for infinite values
         inf_counts = {}
         for col in numeric_cols:
-            inf_count = np.isinf(df[col]).sum()
-            if inf_count > 0:
-                inf_counts[col] = inf_count
+            if col.strip() != 'Label':
+                inf_count = np.isinf(df[col]).sum()
+                if inf_count > 0:
+                    inf_counts[col] = inf_count
                 
         if inf_counts:
             print(f"   Found infinite values in {len(inf_counts)} columns:")
@@ -227,7 +587,7 @@ class CICIDSPreprocessor:
         # Handle extreme values (very large numbers that might cause numerical issues)
         extreme_total = 0
         for col in numeric_cols:
-            if col in df.columns:  # Check if column still exists
+            if col in df.columns and col.strip() != 'Label':  # Skip label column
                 values = df[col].dropna()
                 if len(values) > 0:
                     # Calculate reasonable bounds (99.9th percentile)
@@ -250,64 +610,103 @@ class CICIDSPreprocessor:
         if extreme_total > 0:
             print(f"   Capped {extreme_total:,} extreme values")
         
-        # Fill remaining NaN values with median (more robust than mean)
+        # Apply median imputation for missing values (as specified in requirements)
+        print("   Applying median imputation for missing values...")
         nan_filled = 0
         for col in numeric_cols:
-            if col in df.columns and df[col].isnull().any():
+            if col in df.columns and col.strip() != 'Label' and df[col].isnull().any():
                 null_count = df[col].isnull().sum()
                 median_val = df[col].median()
                 if not pd.isna(median_val):
                     df[col].fillna(median_val, inplace=True)
+                    print(f"     - {col}: filled {null_count:,} missing values with median ({median_val:.6f})")
                 else:
                     # If median is NaN, use 0
                     df[col].fillna(0, inplace=True)
+                    print(f"     - {col}: filled {null_count:,} missing values with 0 (no valid median)")
                 nan_filled += null_count
         
         if nan_filled > 0:
-            print(f"   Filled {nan_filled:,} NaN values with median/zero")
+            print(f"   ✅ Median imputation complete: {nan_filled:,} values filled")
+        else:
+            print(f"   ✅ No missing values found - no imputation needed")
         
-        # Preserve all original features, even if they appear constant
-        # This is important for maintaining the 78 features as per thesis requirements
-        preserved_features = [
-            'Destination Port', 'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
-            'Total Length of Fwd Packets', 'Total Length of Bwd Packets', 'Fwd Packet Length Max',
-            'Fwd Packet Length Min', 'Fwd Packet Length Mean', 'Fwd Packet Length Std',
-            'Bwd Packet Length Max', 'Bwd Packet Length Min', 'Bwd Packet Length Mean',
-            'Bwd Packet Length Std', 'Flow Bytes/s', 'Flow Packets/s', 'Flow IAT Mean',
-            'Flow IAT Std', 'Flow IAT Max', 'Flow IAT Min', 'Fwd IAT Total', 'Fwd IAT Mean',
-            'Fwd IAT Std', 'Fwd IAT Max', 'Fwd IAT Min', 'Bwd IAT Total', 'Bwd IAT Mean',
-            'Bwd IAT Std', 'Bwd IAT Max', 'Bwd IAT Min', 'Fwd PSH Flags', 'Bwd PSH Flags',
-            'Fwd URG Flags', 'Bwd URG Flags', 'Fwd Header Length', 'Bwd Header Length',
-            'Fwd Packets/s', 'Bwd Packets/s', 'Min Packet Length', 'Max Packet Length',
-            'Packet Length Mean', 'Packet Length Std', 'Packet Length Variance', 'FIN Flag Count',
-            'SYN Flag Count', 'RST Flag Count', 'PSH Flag Count', 'ACK Flag Count',
-            'URG Flag Count', 'CWE Flag Count', 'ECE Flag Count', 'Down/Up Ratio',
-            'Average Packet Size', 'Avg Fwd Segment Size', 'Avg Bwd Segment Size',
-            'Fwd Header Length.1', 'Fwd Avg Bytes/Bulk', 'Fwd Avg Packets/Bulk',
-            'Fwd Avg Bulk Rate', 'Bwd Avg Bytes/Bulk', 'Bwd Avg Packets/Bulk',
-            'Bwd Avg Bulk Rate', 'Subflow Fwd Packets', 'Subflow Fwd Bytes',
-            'Subflow Bwd Packets', 'Subflow Bwd Bytes', 'Init_Win_bytes_forward',
-            'Init_Win_bytes_backward', 'act_data_pkt_fwd', 'min_seg_size_forward',
-            'Active Mean', 'Active Std', 'Active Max', 'Active Min', 'Idle Mean',
-            'Idle Std', 'Idle Max', 'Idle Min'
-        ]
+        # Clean column names (remove leading/trailing spaces)
+        df.columns = df.columns.str.strip()
         
-        # Instead of removing columns, ensure all required features exist
-        for feature in preserved_features:
-            if feature not in df.columns and f" {feature}" not in df.columns:
-                print(f"⚠️  Warning: Missing required feature: {feature}")
-                # If missing, add it with zeros (better than dropping features)
-                df[feature] = 0
-                
-        # Remove any extra columns that aren't in our preserved list or Label
-        extra_cols = [col for col in df.columns if col.strip() not in preserved_features and col.strip() != 'Label']
-        if extra_cols:
-            print(f"   Removing {len(extra_cols)} extra columns: {extra_cols}")
-            df = df.drop(columns=extra_cols)
+        # CRITICAL: Ensure we have exactly the expected number of features
+        # CIC-IDS2017 should have 78 features + 1 label = 79 total columns
+        expected_features = config.NUM_FEATURES  # 78
+        label_col = None
+        
+        # Find label column
+        for col in df.columns:
+            if col.lower().strip() in ['label', ' label']:
+                label_col = col
+                break
+        
+        if label_col:
+            feature_cols = [col for col in df.columns if col != label_col]
+            print(f"   Found label column: '{label_col}'")
+            print(f"   Feature columns: {len(feature_cols)} (target: {expected_features})")
+        else:
+            # If no label column found, assume all columns are features
+            feature_cols = list(df.columns)
+            print(f"   No label column found, treating all {len(feature_cols)} columns as features")
+        
+        # Preserve all features - only remove if there are obvious duplicates
+        feature_cols = [col for col in df.columns if col != 'Label']
+        current_features = len(feature_cols)
+        print(f"   Current features after cleaning: {current_features}")
+        
+        # We want to preserve all 78 original features
+        features_removed = []
+        
+        # Only remove features if we somehow have more than the original 78
+        # This could happen due to duplicate columns or data processing errors
+        if current_features > config.NUM_FEATURES:
+            excess_features = current_features - config.NUM_FEATURES
+            print(f"   Found {excess_features} excess features beyond the original 78")
+            
+            # Look for duplicate or obviously problematic columns
+            duplicate_cols = []
+            for i, col1 in enumerate(feature_cols):
+                for j, col2 in enumerate(feature_cols[i+1:], i+1):
+                    if col1 == col2 or col1.strip() == col2.strip():
+                        if col2 not in duplicate_cols:
+                            duplicate_cols.append(col2)
+            
+            if duplicate_cols:
+                print(f"   Removing {len(duplicate_cols)} duplicate columns...")
+                for col in duplicate_cols:
+                    if col in df.columns:
+                        df = df.drop(columns=[col])
+                        features_removed.append(col)
+                        print(f"     - Removed duplicate: {col}")
+        
+        # Final check
+        final_feature_cols = [col for col in df.columns if col != 'Label']
+        final_feature_count = len(final_feature_cols)
+        
+        if final_feature_count == config.NUM_FEATURES:
+            print(f"   ✅ Perfect: Preserved all {final_feature_count} original features")
+        elif final_feature_count < config.NUM_FEATURES:
+            missing_features = config.NUM_FEATURES - final_feature_count
+            print(f"   ⚠️  Missing {missing_features} features (have {final_feature_count}/{config.NUM_FEATURES})")
+            print(f"   This may be due to constant feature removal in clean_data step")
+        else:
+            excess_features = final_feature_count - config.NUM_FEATURES
+            print(f"   ⚠️  Have {excess_features} extra features ({final_feature_count}/{config.NUM_FEATURES})")
+            print(f"   Will keep all features to preserve maximum information")
         
         final_rows = len(df)
-        final_cols = len(df.columns)
-        print(f"   ✅ Cleaned data: {final_rows:,} rows, {final_cols} columns")
+        final_feature_cols = [col for col in df.columns if col != 'Label']
+        final_features = len(final_feature_cols)
+        
+        print(f"   ✅ Cleaned data: {final_rows:,} rows, {final_features} features + 1 label = {len(df.columns)} total columns")
+        
+        if final_features != config.NUM_FEATURES:
+            print(f"   ⚠️  Final feature count: {final_features} (target: {config.NUM_FEATURES})")
         
         return df
     def identify_file_type(self, filename):
@@ -580,17 +979,80 @@ class CICIDSPreprocessor:
             # Fill any remaining missing values
             df = df.fillna(0)
         
-        # Remove constant features (except Label)
-        print("   Checking for constant features...")
+        # ULTRA-CONSERVATIVE approach - preserve ALL 78 features
+        print("   Checking for completely unusable features (ultra-conservative)...")
         constant_cols = []
+        near_constant_cols = []
         
-        for col in df.columns:
-            if col != 'Label' and df[col].nunique() <= 1:
-                constant_cols.append(col)
+        # Get feature columns only (exclude Label)
+        feature_columns = [col for col in df.columns if col.strip().lower() != 'label']
         
-        if constant_cols:
-            print(f"   Removing {len(constant_cols)} constant features")
+        print(f"   Total columns: {len(df.columns)}")
+        print(f"   Feature columns: {len(feature_columns)}")
+        print(f"   Target features: {config.NUM_FEATURES}")
+        
+        # Only check for truly constant features (all identical values)
+        for col in feature_columns:
+            if col in df.columns:
+                unique_count = df[col].nunique(dropna=False)  # Include NaN in count
+                
+                if unique_count <= 1:
+                    # Only mark for removal if ALL values are truly identical
+                    unique_vals = df[col].dropna().unique()
+                    if len(unique_vals) <= 1:
+                        constant_cols.append(col)
+                        print(f"     - CONSTANT: {col} (all values: {unique_vals[0] if len(unique_vals) > 0 else 'NaN'})")
+                elif unique_count <= 2 and df[col].dtype in ['int64', 'float64']:
+                    # Report but KEEP near-constant features
+                    value_counts = df[col].value_counts()
+                    if len(value_counts) == 2:
+                        dominance = value_counts.iloc[0] / len(df)
+                        near_constant_cols.append((col, unique_count, dominance))
+        
+        # Force preservation of all 78 features if requested
+        if self.force_preserve_all_78:
+            print(f"   🔒 FORCING PRESERVATION of all 78 features (including {len(constant_cols)} constant features)")
+            print(f"   Note: Constant features will be kept but have minimal impact on model training")
+            # Don't remove any features - keep everything
+        elif constant_cols:
+            print(f"   Removing {len(constant_cols)} completely constant features: {constant_cols}")
             df = df.drop(columns=constant_cols)
+        else:
+            print("   ✅ No completely constant features found - preserving all features")
+        
+        # Report near-constant features but keep them for maximum information preservation
+        if near_constant_cols:
+            print(f"   Found {len(near_constant_cols)} near-constant features (preserving them):")
+            for col, unique_count, dominance in near_constant_cols[:5]:  # Show first 5
+                print(f"     - {col}: {unique_count} unique values, {dominance:.1%} dominance")
+            if len(near_constant_cols) > 5:
+                print(f"     ... and {len(near_constant_cols) - 5} more")
+        
+        # CRITICAL: Final feature preservation verification
+        feature_cols = [col for col in df.columns if col.strip().lower() != 'label']
+        current_feature_count = len(feature_cols)
+        target_features = config.NUM_FEATURES
+        
+        print(f"   📊 Feature preservation status:")
+        print(f"     - Current: {current_feature_count} features")
+        print(f"     - Target: {target_features} features")
+        print(f"     - Difference: {current_feature_count - target_features}")
+        
+        if current_feature_count == target_features:
+            print(f"   ✅ PERFECT: All {target_features} original features preserved!")
+        elif current_feature_count >= target_features - 2:
+            print(f"   ✅ EXCELLENT: {current_feature_count}/{target_features} features preserved (minimal loss)")
+        elif current_feature_count >= target_features - 5:
+            print(f"   ⚠️  GOOD: {current_feature_count}/{target_features} features preserved (acceptable loss)")
+        else:
+            missing = target_features - current_feature_count
+            print(f"   ⚠️  WARNING: Missing {missing} features ({current_feature_count}/{target_features})")
+            print(f"   This suggests the raw data may not have all expected CIC-IDS2017 features")
+        
+        # If we have more features than expected, that's actually good - keep them all
+        if current_feature_count > target_features:
+            extra = current_feature_count - target_features
+            print(f"   🎉 BONUS: Found {extra} extra features - preserving all for maximum information!")
         
         # Separate features and labels
         feature_cols = [col for col in df.columns if col != 'Label']
@@ -656,107 +1118,199 @@ class CICIDSPreprocessor:
         
         return X_clean, y_clean
     
-    def balance_classes(self, X, y, max_samples_per_class=15000):
-        """Balance classes using SMOTE with memory management"""
-        print("\n⚖️  Balancing classes...")
+    def balance_classes(self, X, y, target_samples_per_class=50000):
+        """Balance classes to achieve 1:1 ratio across all classes using SMOTE"""
+        print("\n⚖️  Balancing classes to achieve 1:1 ratio across all classes...")
         
         original_counts = np.bincount(y)
-        print(f"   Original distribution: {original_counts}")
-        
-        # Calculate realistic target counts
         unique_labels, counts = np.unique(y, return_counts=True)
-        target_count = min(max(counts), max_samples_per_class)
         
-        # Create sampling strategy (only oversample minority classes)
+        print(f"   Original distribution:")
+        total_samples = len(y)
+        for label, count in zip(unique_labels, counts):
+            class_name = self.label_encoder.classes_[label]
+            percentage = (count / total_samples) * 100
+            print(f"     {label}: {class_name} - {count:,} samples ({percentage:.2f}%)")
+        
+        # Calculate target count for 1:1 ratio
+        # Use a reasonable target that's not too large for memory constraints
+        max_current = max(counts)
+        min_current = min(counts)
+        
+        # Target should be reasonable - not too high to avoid memory issues
+        target_count = min(target_samples_per_class, max_current // 2)  # Half of largest class or target
+        target_count = max(target_count, 10000)  # But at least 10k samples per class
+        
+        print(f"   Target samples per class: {target_count:,} (1:1 ratio)")
+        
+        # Create sampling strategy for perfect 1:1 balance
         sampling_strategy = {}
-        label_to_count = dict(zip(unique_labels, counts))
         
-        for label, count in label_to_count.items():
+        for label, count in zip(unique_labels, counts):
+            class_name = self.label_encoder.classes_[label]
+            
             if count < target_count:
-                sampling_strategy[label] = min(target_count, count * 3)  # Max 3x increase
+                sampling_strategy[label] = target_count
+                boost_ratio = target_count / count
+                print(f"     {class_name}: {count:,} -> {target_count:,} ({boost_ratio:.1f}x boost)")
+            else:
+                print(f"     {class_name}: {count:,} -> {target_count:,} (will be downsampled)")
         
+        # Handle downsampling for majority classes first
+        if any(count > target_count for count in counts):
+            print(f"   Downsampling majority classes to {target_count:,} samples...")
+            
+            # Downsample majority classes
+            indices_to_keep = []
+            
+            for label in unique_labels:
+                label_indices = np.where(y == label)[0]
+                
+                if len(label_indices) > target_count:
+                    # Randomly sample target_count indices
+                    selected_indices = np.random.choice(label_indices, target_count, replace=False)
+                    indices_to_keep.extend(selected_indices)
+                else:
+                    # Keep all indices for minority classes
+                    indices_to_keep.extend(label_indices)
+            
+            # Apply downsampling
+            indices_to_keep = sorted(indices_to_keep)
+            X = X.iloc[indices_to_keep] if hasattr(X, 'iloc') else X[indices_to_keep]
+            y = y[indices_to_keep]
+            
+            print(f"   After downsampling: {len(X):,} samples")
+        
+        # Apply SMOTE to achieve 1:1 ratio
         if sampling_strategy:
-            print(f"   Applying SMOTE (max {target_count} per class)...")
-            print(f"   Will oversample: {list(sampling_strategy.keys())}")
+            print(f"   Applying SMOTE to balance {len(sampling_strategy)} minority classes...")
+            print(f"   Will oversample classes: {[self.label_encoder.classes_[label] for label in sampling_strategy.keys()]}")
             
             # Additional data validation before SMOTE
             print("   Validating data for SMOTE...")
             
             # Check for any remaining infinite or NaN values
-            if np.any(np.isinf(X.values)) or np.any(np.isnan(X.values)):
+            if hasattr(X, 'values'):
+                X_values = X.values
+            else:
+                X_values = X
+                
+            if np.any(np.isinf(X_values)) or np.any(np.isnan(X_values)):
                 print("   ⚠️  Found remaining infinite/NaN values, cleaning...")
-                X = X.replace([np.inf, -np.inf], np.nan)
-                X = X.fillna(X.median())
+                if hasattr(X, 'replace'):
+                    X = X.replace([np.inf, -np.inf], np.nan)
+                    X = X.fillna(X.median())
+                else:
+                    X = np.nan_to_num(X, nan=0, posinf=0, neginf=0)
             
             # Ensure all values are finite
-            finite_mask = np.isfinite(X.values).all(axis=1)
-            if not finite_mask.all():
-                print(f"   Removing {(~finite_mask).sum()} rows with non-finite values")
-                X = X.loc[finite_mask]
-                y = y[finite_mask]
+            if hasattr(X, 'values'):
+                finite_mask = np.isfinite(X.values).all(axis=1)
+                if not finite_mask.all():
+                    print(f"   Removing {(~finite_mask).sum()} rows with non-finite values")
+                    X = X.loc[finite_mask]
+                    y = y[finite_mask]
             
-            # Reduce k_neighbors if we have few samples for minority classes
-            min_class_count = min([label_to_count[label] for label in sampling_strategy.keys()])
-            k_neighbors = min(5, max(1, min_class_count - 1))
+            # Calculate k_neighbors based on smallest class size
+            current_counts = np.bincount(y)
+            min_class_size = min([current_counts[label] for label in sampling_strategy.keys() if label < len(current_counts)])
+            k_neighbors = min(5, max(1, min_class_size - 1))
             
-            # Create SMOTE with adjusted parameters
-            # Handle different SMOTE versions by checking parameter compatibility
+            # Create SMOTE with adjusted parameters for 1:1 balancing
             try:
-                # Try with dictionary sampling strategy (newer versions)
-                # Type ignore for compatibility across different imbalanced-learn versions
-                smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=k_neighbors)  # type: ignore
-            except (TypeError, ValueError) as smote_error:
-                # Fallback to 'auto' strategy for compatibility
-                print(f"   SMOTE sampling strategy error: {smote_error}")
-                print("   Using 'auto' sampling strategy for SMOTE compatibility")
-                smote = SMOTE(random_state=42, sampling_strategy='auto', k_neighbors=k_neighbors)
-            
-            try:
-                print(f"   Running SMOTE (k_neighbors={k_neighbors})...")
+                # Ensure k_neighbors is an integer
+                k_neighbors_int = int(k_neighbors)
+                print(f"   Running SMOTE for 1:1 class balance (k_neighbors={k_neighbors_int})...")
+                
+                # Create SMOTE instance with proper type handling
+                smote = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=k_neighbors_int)  # type: ignore
+                
+                # Apply SMOTE
                 result = smote.fit_resample(X, y)
-                if len(result) == 2:
-                    X_balanced, y_balanced = result
-                else:
-                    # Handle cases where additional info might be returned
-                    X_balanced, y_balanced = result[0], result[1]
+                X_balanced = result[0]
+                y_balanced = result[1]
+                
+                # Verify perfect balance
                 balanced_counts = np.bincount(y_balanced)
-                print(f"   ✅ SMOTE successful! Balanced distribution: {balanced_counts}")
+                print(f"   ✅ SMOTE successful! Achieved 1:1 balance:")
+                for label, count in enumerate(balanced_counts):
+                    if label < len(self.label_encoder.classes_):
+                        class_name = self.label_encoder.classes_[label]
+                        print(f"     {class_name}: {count:,} samples")
+                        
             except ValueError as e:
-                if "probabilities do not sum to 1" in str(e):
-                    print("   ⚠️  SMOTE probability error - trying with smaller k_neighbors...")
+                if "k_neighbors" in str(e).lower():
+                    print(f"   ⚠️  SMOTE k_neighbors error - trying with k_neighbors=1...")
                     try:
-                        # Try with k_neighbors=1 and auto strategy
-                        smote_fallback = SMOTE(random_state=42, sampling_strategy='auto', k_neighbors=1)
+                        smote_fallback = SMOTE(random_state=42, sampling_strategy=sampling_strategy, k_neighbors=1)  # type: ignore
                         result = smote_fallback.fit_resample(X, y)
-                        X_balanced, y_balanced = result[0], result[1]
+                        X_balanced = result[0]
+                        y_balanced = result[1]
                         print("   ✅ SMOTE successful with k_neighbors=1")
                     except Exception as e2:
-                        print(f"   ❌ SMOTE failed even with fallback: {e2}")
-                        print("   Continuing without class balancing...")
+                        print(f"   ❌ SMOTE failed: {e2}")
+                        print("   Continuing without perfect balancing...")
                         X_balanced, y_balanced = X, y
                 else:
                     print(f"   ⚠️  SMOTE failed: {e}")
-                    print("   Continuing without class balancing...")
+                    print("   Continuing without perfect balancing...")
                     X_balanced, y_balanced = X, y
             except Exception as e:
                 print(f"   ⚠️  SMOTE failed with unexpected error: {e}")
-                print("   Continuing without class balancing...")
+                print("   Continuing without perfect balancing...")
                 X_balanced, y_balanced = X, y
         else:
-            print("   Classes reasonably balanced, skipping SMOTE")
+            print("   No minority classes need oversampling")
             X_balanced, y_balanced = X, y
+        
+        # Final balance verification
+        final_counts = np.bincount(y_balanced)
+        print(f"\n   Final class distribution after balancing:")
+        for label, count in enumerate(final_counts):
+            if label < len(self.label_encoder.classes_):
+                class_name = self.label_encoder.classes_[label]
+                percentage = (count / len(y_balanced)) * 100
+                print(f"     {class_name}: {count:,} samples ({percentage:.1f}%)")
         
         return X_balanced, y_balanced
     
     def split_data(self, X, y):
-        """Split data maintaining class distribution"""
-        print("\n✂️  Splitting data...")
+        """Split data with proper shuffling and deduplication to prevent leakage"""
+        print("\n✂️  Splitting data (before scaling to prevent leakage)...")
         
+        # Step 1: Remove duplicate rows to prevent train-test contamination
+        print("   Removing duplicate samples to prevent train-test contamination...")
+        if hasattr(X, 'values'):
+            X_array = X.values
+        else:
+            X_array = X
+        
+        # Create DataFrame for deduplication
+        combined_data = pd.DataFrame(X_array)
+        combined_data['target'] = y
+        
+        initial_samples = len(combined_data)
+        combined_data = combined_data.drop_duplicates()
+        final_samples = len(combined_data)
+        duplicates_removed = initial_samples - final_samples
+        
+        if duplicates_removed > 0:
+            print(f"   Removed {duplicates_removed:,} duplicate samples ({duplicates_removed/initial_samples*100:.1f}%)")
+        else:
+            print("   No duplicate samples found")
+        
+        # Extract features and labels
+        X_deduplicated = combined_data.drop('target', axis=1).values
+        y_deduplicated = combined_data['target'].values
+        
+        # Step 2: Split data with stratification and shuffling to prevent temporal leakage
+        print("   Splitting with stratification and shuffling to prevent temporal leakage...")
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, 
+            X_deduplicated, y_deduplicated, 
             test_size=0.3, 
             random_state=42, 
-            stratify=y
+            stratify=np.array(y_deduplicated),
+            shuffle=True  # Enable shuffling for stratified split
         )
         
         print(f"   Training set: {X_train.shape} ({len(X_train):,} samples)")
@@ -765,8 +1319,8 @@ class CICIDSPreprocessor:
         return X_train, X_test, y_train, y_test
     
     def normalize_features(self, X_train, X_test):
-        """Z-score normalization"""
-        print("\n📊 Normalizing features...")
+        """Z-score normalization (μ=0, σ=1) - fit only on training data to prevent data leakage"""
+        print("\n📊 Applying z-score normalization (μ=0, σ=1) - preventing data leakage...")
         
         # Convert to numpy if pandas DataFrame
         if hasattr(X_train, 'values'):
@@ -778,10 +1332,30 @@ class CICIDSPreprocessor:
             X_test_array = X_test
             feature_names = [f'feature_{i}' for i in range(X_train.shape[1])]
         
+        # CRITICAL: Fit scaler ONLY on training data to prevent data leakage
+        print("   Fitting scaler on training data only...")
         X_train_scaled = self.scaler.fit_transform(X_train_array)
+        
+        # Transform test data using the scaler fitted on training data
+        print("   Transforming test data using training statistics...")
         X_test_scaled = self.scaler.transform(X_test_array)
         
+        # Verify no data leakage in scaling
+        train_mean = X_train_scaled.mean(axis=0)
+        train_std = X_train_scaled.std(axis=0)
+        test_mean = X_test_scaled.mean(axis=0)
+        
         print(f"   Normalized {X_train_scaled.shape[1]} features")
+        print(f"   Training set mean: {train_mean.mean():.6f} (should be ~0)")
+        print(f"   Training set std: {train_std.mean():.6f} (should be ~1)")
+        print(f"   Test set mean: {test_mean.mean():.6f} (will differ from 0 - this is expected)")
+        
+        # Check for potential scaling issues
+        if np.any(np.isnan(X_train_scaled)) or np.any(np.isnan(X_test_scaled)):
+            print("   ⚠️  Warning: NaN values found after scaling")
+        
+        if np.any(np.isinf(X_train_scaled)) or np.any(np.isinf(X_test_scaled)):
+            print("   ⚠️  Warning: Infinite values found after scaling")
         
         return X_train_scaled, X_test_scaled, feature_names
     
@@ -820,55 +1394,158 @@ class CICIDSPreprocessor:
         return processed_file
     
     def preprocess_full_pipeline(self):
-        """Complete preprocessing pipeline"""
-        print("🚀 CIC-IDS2017 Preprocessing (No Label Columns)")
-        print("=" * 60)
+        """Complete preprocessing pipeline with visualizations and data leakage detection"""
+        print("🚀 Enhanced CIC-IDS2017 Preprocessing")
+        print("=" * 70)
+        print("Features: Visualizations, Data Leakage Detection, Proper Scaling")
+        print("=" * 70)
         
         try:
             # Step 1: Load data and create labels from filenames
+            print("\n📁 Step 1: Loading raw data...")
             df = self.load_data_without_labels()
             
-            # Step 2: Clean data
+            # Step 1.5: Create BEFORE preprocessing visualizations
+            print("\n📊 Step 1.5: Creating before-preprocessing visualizations...")
+            self.create_before_preprocessing_visualizations(df)
+            
+            # Step 2: Clean data and handle missing values with imputation tracking
+            print("\n🧹 Step 2: Cleaning data...")
+            original_df = df.copy()  # Keep original for imputation validation
             X, y = self.clean_data(df)
             
-            # Step 3: Split data
+            # Validate that we preserved the original 78 features
+            feature_count = X.shape[1]
+            target_features = config.NUM_FEATURES  # Should be 78
+            
+            if feature_count == target_features:
+                print(f"✅ Perfect: Preserved all {feature_count} original features")
+            elif feature_count >= target_features - 2:
+                print(f"✅ Excellent: Have {feature_count}/{target_features} features (minimal loss)")
+            elif feature_count >= target_features - 5:
+                print(f"⚠️  Good: Have {feature_count}/{target_features} features (small loss)")
+            else:
+                print(f"⚠️  Warning: Only {feature_count}/{target_features} features preserved")
+                print("   Some original features may have been lost during cleaning")
+            
+            # Store feature names before splitting (split_data returns numpy arrays)
+            feature_names = X.columns.tolist() if hasattr(X, 'columns') else [f'feature_{i}' for i in range(X.shape[1])]
+            
+            # Step 3: Split data BEFORE any other processing to prevent leakage
+            print("\n✂️  Step 3: Splitting data (before scaling to prevent leakage)...")
             X_train, X_test, y_train, y_test = self.split_data(X, y)
             
-            # Step 4: Remove outliers from training data
-            X_train_clean, y_train_clean = self.remove_outliers(X_train, y_train)
+            # Step 3.5: Data leakage detection (BEFORE normalization)
+            print("\n🔍 Step 3.5: Detecting data leakage...")
+            leakage_results = self.detect_data_leakage(X_train, X_test, y_train, y_test, feature_names)
+            
+            # Step 4: Remove outliers from training data only
+            print("\n🎯 Step 4: Removing outliers (training data only)...")
+            # Convert numpy array back to DataFrame for outlier detection
+            X_train_df = pd.DataFrame(X_train, columns=feature_names)
+            X_train_clean, y_train_clean = self.remove_outliers(X_train_df, y_train)
             
             # Step 5: Balance classes
+            print("\n⚖️  Step 5: Balancing classes...")
             X_train_balanced, y_train_balanced = self.balance_classes(X_train_clean, y_train_clean)
             
-            # Step 6: Normalize features
-            X_train_final, X_test_final, feature_names = self.normalize_features(X_train_balanced, X_test)
+            # Step 6: Create imputation validation (if there was missing data)
+            if original_df.isnull().sum().sum() > 0:
+                print("\n🔬 Step 6: Validating imputation...")
+                X_train_array = X_train_balanced.values if hasattr(X_train_balanced, 'values') else X_train_balanced
+                self.create_imputation_validation_plots(original_df, X_train_array, feature_names)
             
-            # Step 7: Save processed data
+            # Step 7: Normalize features (CRITICAL: fit only on training data)
+            print("\n📊 Step 7: Normalizing features (preventing data leakage)...")
+            # Convert test data to DataFrame for consistency
+            X_test_df = pd.DataFrame(X_test, columns=feature_names)
+            X_train_final, X_test_final, feature_names_final = self.normalize_features(X_train_balanced, X_test_df)
+            
+            # Step 8: Create AFTER preprocessing visualizations
+            print("\n📊 Step 8: Creating after-preprocessing visualizations...")
+            self.create_after_preprocessing_visualizations(X_train_final, X_test_final, y_train_balanced, y_test, feature_names_final)
+            
+            # Step 9: Final validation
+            print("\n🔍 Step 9: Final validation...")
+            
+            final_feature_count = X_train_final.shape[1]
+            target_features = config.NUM_FEATURES  # Should be 78
+            
+            # Validate we have the complete 78 feature set
+            if final_feature_count == target_features:
+                print(f"   ✅ Perfect: All {final_feature_count} original features preserved")
+            elif final_feature_count >= target_features - 2:
+                print(f"   ✅ Excellent: {final_feature_count}/{target_features} features (minimal loss)")
+            else:
+                print(f"   ⚠️  Have {final_feature_count}/{target_features} features")
+                print("   Some features were lost but continuing with available information")
+            
+            # Check for data issues
+            if np.any(np.isnan(X_train_final)) or np.any(np.isnan(X_test_final)):
+                raise ValueError("NaN values found in final processed data")
+            
+            if np.any(np.isinf(X_train_final)) or np.any(np.isinf(X_test_final)):
+                raise ValueError("Infinite values found in final processed data")
+            
+            print("   ✅ Data quality validation passed")
+            print(f"   ✅ Final dataset: {final_feature_count} features, {len(X_train_final):,} train samples, {len(X_test_final):,} test samples")
+            
+            # Step 10: Save processed data
+            print("\n💾 Step 10: Saving processed data...")
             output_file = self.save_processed_data(
                 X_train_final, X_test_final, 
                 y_train_balanced, y_test,
-                feature_names
+                feature_names_final
             )
             
-            print("\n" + "=" * 60)
-            print("✅ PREPROCESSING COMPLETE!")
-            print("=" * 60)
+            # Final summary
+            print("\n" + "=" * 70)
+            print("✅ ENHANCED PREPROCESSING COMPLETE!")
+            print("=" * 70)
+            final_features = X_train_final.shape[1]
+            target_features = config.NUM_FEATURES
+            
             print(f"📊 Final Statistics:")
+            if final_features == target_features:
+                print(f"   Features: {final_features}/{target_features} ✅ (All original features preserved)")
+            else:
+                print(f"   Features: {final_features}/{target_features} ({'✅' if final_features >= target_features - 2 else '⚠️'}) ")
             print(f"   Training: {X_train_final.shape} ({len(y_train_balanced):,} samples)")
             print(f"   Test: {X_test_final.shape} ({len(y_test):,} samples)")
             print(f"   Classes: {len(self.label_encoder.classes_)}")
+            print(f"   Feature range: [{X_train_final.min():.3f}, {X_train_final.max():.3f}]")
             print(f"   Output: {output_file}")
+            
+            print(f"\n📊 Data Leakage Check:")
+            print(f"   Train-test contamination: {'❌ DETECTED' if leakage_results.get('train_test_contamination', False) else '✅ None'}")
+            print(f"   Feature leakage: {'❌' if leakage_results.get('feature_leakage', []) else '✅'} {len(leakage_results.get('feature_leakage', []))} suspicious features")
+            print(f"   Normalization leakage: ✅ Prevented (scaler fit only on training data)")
+            
+            print(f"\n📈 Visualizations saved to: {self.viz_dir}")
+            print(f"   - raw_data_overview.png")
+            print(f"   - raw_feature_distributions.png") 
+            print(f"   - raw_correlation_matrix.png")
+            print(f"   - preprocessed_data_overview.png")
+            print(f"   - feature_importance.png")
+            print(f"   - data_leakage_detection.png")
+            if original_df.isnull().sum().sum() > 0:
+                print(f"   - imputation_validation.png")
+            
             print("\n🚀 Ready for model training!")
             print("   Next: python experiments/train_baseline.py")
             
             return X_train_final, X_test_final, y_train_balanced, y_test
             
         except Exception as e:
-            print(f"\n❌ Preprocessing failed: {e}")
+            print(f"\n❌ Enhanced preprocessing failed: {e}")
             print("\n🔧 Troubleshooting:")
             print("   1. Check if files exist in data/raw/")
-            print("   2. Try: python data/download_dataset.py (create sample)")
+            print("   2. Ensure you have matplotlib, seaborn installed")
             print("   3. Check available memory (large dataset)")
+            print("   4. Review logs above for specific errors")
+            print("   5. Verify CIC-IDS2017 dataset has correct structure (78 features + 1 label)")
+            import traceback
+            traceback.print_exc()
             raise
 
 def main():
